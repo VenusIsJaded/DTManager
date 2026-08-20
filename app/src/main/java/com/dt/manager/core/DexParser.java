@@ -301,7 +301,7 @@ public class DexParser implements Closeable {
         void sortChildren() {
             // Packages first, then classes; alphabetical within each group
             Collections.sort(children, Comparator
-                    .comparing((Node n) -> !n.isPackage)
+                    .comparingInt((Node n) -> n.isPackage ? 0 : 1)
                     .thenComparing(n -> n.name.toLowerCase()));
             for (Node c : children) c.sortChildren();
         }

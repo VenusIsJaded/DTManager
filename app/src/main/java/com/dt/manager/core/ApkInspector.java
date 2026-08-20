@@ -5,11 +5,11 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -31,7 +31,9 @@ public class ApkInspector implements Closeable {
         this.source = file;
         this.zip = new ZipFile(file);
         this.entries = new ArrayList<>();
-        for (ZipEntry e : zip) {
+        Enumeration<? extends ZipEntry> en = zip.entries();
+        while (en.hasMoreElements()) {
+            ZipEntry e = en.nextElement();
             if (!e.isDirectory()) {
                 entries.add(EntryInfo.from(e));
             }
@@ -72,7 +74,7 @@ public class ApkInspector implements Closeable {
         }
         // Deduplicate virtual folders
         Collections.sort(result, Comparator
-                .comparing((EntryInfo e) -> !e.isDirectory)
+                .comparingInt((EntryInfo e) -> e.isDirectory() ? 0 : 1)
                 .thenComparing(EntryInfo::getName));
         return result;
     }
