@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DT Manager</string>
+    <string name="title_apk_viewer">APK Inspector</string>
+    <string name="title_dex_viewer">Dex Editor</string>
+    <string name="title_about">About</string>
+
+    <string name="nav_storage">Internal Storage</string>
+    <string name="nav_about">About</string>
+
+    <string name="action_install">Install</string>
+    <string name="action_view">View inside</string>
+    <string name="action_extract">Extract</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_properties">Properties</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_back">Back</string>
+    <string name="action_search">Search</string>
+    <string name="action_more">More</string>
+    <string name="action_open_dex">Open in Dex Editor</string>
+
+    <string name="tab_explorer">EXPLORER</string>
+    <string name="tab_history">HISTORY</string>
+    <string name="tab_search">SEARCH</string>
+    <string name="tab_strings">STRINGS</string>
+
+    <string name="empty_dir">Empty folder</string>
+    <string name="empty_dex">No classes found</string>
+    <string name="empty_search">No results</string>
+    <string name="empty_strings">No strings found</string>
+
+    <string name="grant_storage_perm">Storage permission is required to browse files</string>
+    <string name="grant_install_perm">Install permission is required to install packages</string>
+    <string name="grant">Grant</string>
+
+    <string name="installing">Installing…</string>
+    <string name="install_apk_title">Install APK</string>
+    <string name="install_xapk_title">Install XAPK</string>
+    <string name="install_apkm_title">Install APKM</string>
+    <string name="install_success">Install requested successfully</string>
+    <string name="install_fail">Install failed: %1$s</string>
+
+    <string name="format_summary">Folders: %1$d  Files: %2$d</string>
+    <string name="format_summary_disk">Folders: %1$d  Files: %2$d  Disk: %3$s/%4$s</string>
+    <string name="format_size_bytes">%1$s</string>
+
+    <string name="file_androidmanifest">AndroidManifest.xml</string>
+    <string name="file_resources_arsc">resources.arsc</string>
+    <string name="file_classes_dex">classes.dex</string>
+
+    <string name="about_text">DT Manager\nVersion 0.1.0\n\nA simple APK inspector and Dex viewer inspired by MT Manager. Built with native Android (target API 28).</string>
+
+    <string name="error_no_handler">No app available to handle this file</string>
+    <string name="error_open_apk">Cannot open APK file</string>
+    <string name="error_open_dex">Cannot open DEX file</string>
+    <string name="error_not_implemented">Not implemented yet</string>
+</resources>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_primary">#FF101010</color>
+    <color name="bg_secondary">#FF1B1B1B</color>
+    <color name="bg_tertiary">#FF262626</color>
+    <color name="bg_hover">#FF333333</color>
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#FFB3B3B3</color>
+    <color name="text_tertiary">#FF808080</color>
+    <color name="accent_blue">#FF3EA6FF</color>
+    <color name="accent_blue_dark">#FF1F88E5</color>
+    <color name="accent_green">#FF4DD0A0</color>
+    <color name="accent_orange">#FFFFB74D</color>
+    <color name="accent_red">#FFEF5350</color>
+    <color name="accent_purple">#FFB388FF</color>
+    <color name="icon_folder_bg">#FF2A2A2A</color>
+    <color name="icon_dex_bg">#FF0F4D44</color>
+    <color name="icon_apk_bg">#FF3D2E1F</color>
+    <color name="icon_xml_bg">#FF1E3A8A</color>
+    <color name="icon_arsc_bg">#FF7C3A12</color>
+    <color name="icon_default_bg">#FF374151</color>
+    <color name="divider">#FF2C2C2C</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+</resources>
