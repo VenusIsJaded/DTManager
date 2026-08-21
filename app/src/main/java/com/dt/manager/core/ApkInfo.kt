@@ -7,8 +7,6 @@ import android.graphics.drawable.Drawable
 import android.os.Build
 import com.dt.manager.util.FileUtils
 import java.io.File
-import java.io.IOException
-import java.util.Locale
 
 /**
  * Lightweight reader for APK metadata: app icon, label, version, SDKs, and
@@ -25,7 +23,7 @@ class ApkInfo {
     @JvmField var fileSize: Long = 0
     @JvmField var minSdk: Int = -1
     @JvmField var targetSdk: Int = -1
-    /** One of: "V1", "V1+V2", "V1+V2+V3", "None", "Unknown" */
+    /** One of: "V1", "V1+V2", "V1+V2+V3", "V2", "V2+V3", "V3", "None", "Unknown" */
     @JvmField var signatureScheme: String = "Unknown"
 
     fun formatSize(): String = FileUtils.humanReadable(fileSize)
@@ -85,32 +83,19 @@ class ApkInfo {
                 info.versionName = ""
             }
 
-            info.signatureScheme = detectSignatureScheme(apkFile)
+            info.signatureScheme = SignatureSchemeDetector.detectLabel(apkFile)
             return info
         }
 
+        /**
+         * @deprecated Use [SignatureSchemeDetector.detectLabel] directly. Kept
+         *   for source compatibility with any code that called this method by
+         *   reflection.
+         */
+        @Deprecated("Use SignatureSchemeDetector.detectLabel()", ReplaceWith("SignatureSchemeDetector.detectLabel(apkFile)"))
         @JvmStatic
-        fun detectSignatureScheme(apkFile: File): String {
-            var v1 = false
-            try {
-                ApkInspector(apkFile).use { inspector ->
-                    val entries = inspector.listEntries()
-                    for (e in entries) {
-                        val upper = e.path.uppercase(Locale.ROOT)
-                        if (upper.startsWith("META-INF/") &&
-                            (upper.endsWith(".RSA") || upper.endsWith(".DSA") || upper.endsWith(".EC"))
-                        ) {
-                            v1 = true
-                            break
-                        }
-                    }
-                }
-            } catch (_: IOException) {
-                return "Unknown"
-            }
-
-            return if (v1) "V1+V2+V3" else "None"
-        }
+        fun detectSignatureScheme(apkFile: File): String =
+            SignatureSchemeDetector.detectLabel(apkFile)
 
         @JvmStatic
         fun sdkToVersionName(sdk: Int): String {

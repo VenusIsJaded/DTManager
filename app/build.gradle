@@ -80,6 +80,12 @@ dependencies {
     implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
     implementation 'org.bouncycastle:bcpkix-jdk18on:1.78.1'
 
+    // apksig — Google's official APK signing library. Used by ApkRepacker
+    // to preserve the original APK's signature schemes (V1/V2/V3) instead
+    // of always downgrading to V1-only JAR signing.
+    implementation 'com.android.tools.build:apksig:8.2.2'
+
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.bouncycastle:bcutil-jdk18on:1.78.1'
 }
 
