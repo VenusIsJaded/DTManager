@@ -12,6 +12,8 @@ import android.text.TextWatcher;
 import android.text.style.CharacterStyle;
 import android.util.AttributeSet;
 import android.view.Gravity;
+import android.view.ScaleGestureDetector;
+import android.view.ViewConfiguration;
 
 import androidx.appcompat.widget.AppCompatEditText;
 
@@ -19,20 +21,29 @@ import com.dt.manager.core.SyntaxHighlighter;
 
 /**
  * EditText that paints a line-number gutter on the left side and
- * (optionally) applies syntax highlighting. Lines scroll naturally
- * with the text since the gutter is drawn relative to the EditText's
- * own layout.
+ * (optionally) applies syntax highlighting. Supports pinch-to-zoom
+ * to change the text size.
+ *
+ * The view should be wrapped inside a NestedScrollView (vertical)
+ * + HorizontalScrollView (horizontal) for proper scroll behavior.
+ * Set layout_width and layout_height to wrap_content.
  */
 public class CodeEditorView extends AppCompatEditText {
 
-    private static final int GUTTER_WIDTH_DP = 40;
+    private static final int GUTTER_WIDTH_DP = 36;
     private static final int GUTTER_PADDING_DP = 6;
+    private static final float DEFAULT_TEXT_SIZE_SP = 11f;
+    private static final float MIN_TEXT_SIZE_SP = 7f;
+    private static final float MAX_TEXT_SIZE_SP = 28f;
 
     private Paint gutterBgPaint;
     private Paint lineNumberPaint;
     private Paint separatorPaint;
     private int gutterWidthPx;
     private int gutterPaddingPx;
+
+    private float textSizeSp = DEFAULT_TEXT_SIZE_SP;
+    private ScaleGestureDetector scaleDetector;
 
     private SyntaxHighlighter.Language language = SyntaxHighlighter.Language.TEXT;
     private boolean highlightEnabled = true;
@@ -72,14 +83,14 @@ public class CodeEditorView extends AppCompatEditText {
         lineNumberPaint.setColor(0xFF808080);
         lineNumberPaint.setTypeface(Typeface.MONOSPACE);
         lineNumberPaint.setAntiAlias(true);
-        lineNumberPaint.setTextSize(11 * density);
+        lineNumberPaint.setTextSize(DEFAULT_TEXT_SIZE_SP * density);
         lineNumberPaint.setTextAlign(Paint.Align.RIGHT);
 
         setTypeface(Typeface.MONOSPACE);
         setTextColor(0xFFEEEEEE);
         setBackgroundColor(Color.TRANSPARENT);
-        setTextSize(13);
-        setLineSpacing(4 * density, 1.0f);
+        setTextSize(DEFAULT_TEXT_SIZE_SP);
+        setLineSpacing(3 * density, 1.0f);
         setHorizontallyScrolling(true);
         setGravity(Gravity.TOP);
 
@@ -87,6 +98,24 @@ public class CodeEditorView extends AppCompatEditText {
                 (int) (8 * density),
                 (int) (12 * density),
                 (int) (8 * density));
+
+        // Pinch-to-zoom
+        scaleDetector = new ScaleGestureDetector(getContext(), new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            @Override
+            public boolean onScale(ScaleGestureDetector detector) {
+                float factor = detector.getScaleFactor();
+                float newSize = textSizeSp * factor;
+                if (newSize < MIN_TEXT_SIZE_SP) newSize = MIN_TEXT_SIZE_SP;
+                if (newSize > MAX_TEXT_SIZE_SP) newSize = MAX_TEXT_SIZE_SP;
+                if (Math.abs(newSize - textSizeSp) < 0.1f) return true;
+                textSizeSp = newSize;
+                setTextSize(textSizeSp);
+                float density = getContext().getResources().getDisplayMetrics().density;
+                lineNumberPaint.setTextSize(textSizeSp * density);
+                invalidate();
+                return true;
+            }
+        });
 
         addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -107,6 +136,20 @@ public class CodeEditorView extends AppCompatEditText {
     public void setHighlightEnabled(boolean enabled) {
         this.highlightEnabled = enabled;
         if (enabled) applyHighlight();
+    }
+
+    public void setTextSizeSp(float sp) {
+        textSizeSp = sp;
+        if (textSizeSp < MIN_TEXT_SIZE_SP) textSizeSp = MIN_TEXT_SIZE_SP;
+        if (textSizeSp > MAX_TEXT_SIZE_SP) textSizeSp = MAX_TEXT_SIZE_SP;
+        setTextSize(textSizeSp);
+        float density = getContext().getResources().getDisplayMetrics().density;
+        lineNumberPaint.setTextSize(textSizeSp * density);
+        invalidate();
+    }
+
+    public float getTextSizeSp() {
+        return textSizeSp;
     }
 
     /** Apply syntax highlighting to the current text. */
@@ -131,6 +174,15 @@ public class CodeEditorView extends AppCompatEditText {
             e.setSpan(CharacterStyle.wrap(s), start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         suppressHighlight = false;
+    }
+
+    @Override
+    public boolean onTouchEvent(android.view.MotionEvent event) {
+        scaleDetector.onTouchEvent(event);
+        if (scaleDetector.isInProgress()) {
+            return true;
+        }
+        return super.onTouchEvent(event);
     }
 
     @Override

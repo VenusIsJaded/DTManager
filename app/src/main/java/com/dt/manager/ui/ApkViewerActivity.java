@@ -180,29 +180,56 @@ public class ApkViewerActivity extends AppCompatActivity {
 
     /** Show options when tapping a .dex: open in Dex Editor, browse APK contents, or properties. */
     private void showDexOptions(ApkInspector.EntryInfo e) {
+        // Find all .dex files in the APK root
+        List<String> allDexFiles = findAllDexFiles();
+
+        // If only one dex, just open it
+        if (allDexFiles.size() <= 1) {
+            openDexViewer(e.getPath(), allDexFiles);
+            return;
+        }
+
+        // Show MultiDex chooser — list with the tapped one selected
+        final boolean[] checked = new boolean[allDexFiles.size()];
+        int tappedIdx = allDexFiles.indexOf(e.getPath());
+        if (tappedIdx >= 0) checked[tappedIdx] = true;
+
+        CharSequence[] items = allDexFiles.toArray(new CharSequence[0]);
         new AlertDialog.Builder(this)
-                .setTitle(e.getName())
-                .setItems(new CharSequence[]{
-                        getString(R.string.action_open_dex_editor),
-                        getString(R.string.action_browse_apk),
-                        getString(R.string.action_properties)
-                }, (d, which) -> {
-                    switch (which) {
-                        case 0:
-                            openDexViewer(e.getPath());
-                            break;
-                        case 1:
-                            // Navigate back to the APK root
-                            currentDir = "";
-                            history.clear();
-                            refresh();
-                            break;
-                        case 2:
-                            showEntryProperties(e);
-                            break;
+                .setTitle("MultiDex")
+                .setMultiChoiceItems(items, checked, (d, which, isChecked) -> {
+                    if (isChecked) {
+                        // uncheck all others (single-select behavior)
+                        for (int i = 0; i < checked.length; i++) {
+                            if (i != which) {
+                                checked[i] = false;
+                                ((android.app.AlertDialog) d).getListView().setItemChecked(i, false);
+                            }
+                        }
+                        checked[which] = true;
                     }
                 })
+                .setPositiveButton("OK", (d, which) -> {
+                    int selected = -1;
+                    for (int i = 0; i < checked.length; i++) {
+                        if (checked[i]) { selected = i; break; }
+                    }
+                    if (selected < 0) selected = tappedIdx >= 0 ? tappedIdx : 0;
+                    openDexViewer(allDexFiles.get(selected), allDexFiles);
+                })
+                .setNegativeButton("CANCEL", null)
                 .show();
+    }
+
+    /** Find all .dex files at the APK root. */
+    private List<String> findAllDexFiles() {
+        List<String> out = new ArrayList<>();
+        for (ApkInspector.EntryInfo e : inspector.listInDirectory("")) {
+            if (!e.isDirectory() && e.getName().toLowerCase().endsWith(".dex")) {
+                out.add(e.getPath());
+            }
+        }
+        return out;
     }
 
     private boolean isTextEntry(String lowerName) {
@@ -218,17 +245,19 @@ public class ApkViewerActivity extends AppCompatActivity {
         startActivity(intent);
     }
 
-    private void openDexViewer(String entryPath) {
+    private void openDexViewer(String entryPath, List<String> allDexFiles) {
         Intent intent = new Intent(this, DexViewerActivity.class);
         intent.putExtra(DexViewerActivity.EXTRA_APK_PATH, apkFile.getAbsolutePath());
         intent.putExtra(DexViewerActivity.EXTRA_DEX_ENTRY, entryPath);
+        if (allDexFiles != null && !allDexFiles.isEmpty()) {
+            intent.putExtra(DexViewerActivity.EXTRA_DEX_ENTRIES, new ArrayList<>(allDexFiles));
+        }
         startActivity(intent);
     }
 
     /** Context-aware long-press — only relevant actions per file type. */
     private void showEntryOptions(ApkInspector.EntryInfo e) {
         if (e.isDirectory()) {
-            // Folders: no actions needed (tapping already navigates in)
             new AlertDialog.Builder(this)
                     .setTitle(e.getName())
                     .setMessage("Folder")
@@ -243,7 +272,7 @@ public class ApkViewerActivity extends AppCompatActivity {
         String name = e.getName().toLowerCase();
         if (name.endsWith(".dex")) {
             labels.add("Open in Dex Editor");
-            actions.add(() -> openDexViewer(e.getPath()));
+            actions.add(() -> showDexOptions(e));
         } else if (name.endsWith(".apk")) {
             labels.add("Install");
             actions.add(() -> {

@@ -34,7 +34,7 @@ public class SyntaxHighlighter {
     public static final int COLOR_DEFAULT     = 0xFFEEEEEE; // off-white
 
     public enum Language {
-        XML, JSON, SMALI, JAVA, TEXT
+        XML, JSON, SMALI, JAVA, MARKDOWN, TEXT
     }
 
     public static Language detectLanguage(String fileName) {
@@ -44,6 +44,7 @@ public class SyntaxHighlighter {
         if (lower.endsWith(".json")) return Language.JSON;
         if (lower.endsWith(".smali")) return Language.SMALI;
         if (lower.endsWith(".java") || lower.endsWith(".kt")) return Language.JAVA;
+        if (lower.endsWith(".md") || lower.endsWith(".markdown")) return Language.MARKDOWN;
         return Language.TEXT;
     }
 
@@ -52,11 +53,12 @@ public class SyntaxHighlighter {
         if (text == null || text.isEmpty()) return sb;
 
         switch (lang) {
-            case XML:   highlightXml(sb); break;
-            case JSON:  highlightJson(sb); break;
-            case SMALI: highlightSmali(sb); break;
-            case JAVA:  highlightJava(sb); break;
-            case TEXT:  break;
+            case XML:      highlightXml(sb); break;
+            case JSON:     highlightJson(sb); break;
+            case SMALI:    highlightSmali(sb); break;
+            case JAVA:     highlightJava(sb); break;
+            case MARKDOWN: highlightMarkdown(sb); break;
+            case TEXT:     break;
         }
         return sb;
     }
@@ -134,6 +136,46 @@ public class SyntaxHighlighter {
         applySpan(sb, SMALI_STRING, new ForegroundColorSpan(COLOR_STRING));
         applySpan(sb, SMALI_NUMBER, new ForegroundColorSpan(COLOR_NUMBER));
         applySpan(sb, SMALI_KEYWORD, new ForegroundColorSpan(COLOR_KEYWORD), new StyleSpan(android.graphics.Typeface.BOLD));
+    }
+
+    /* ============== Markdown ============== */
+
+    // ATX headers: lines starting with 1-6 # chars
+    private static final Pattern MD_HEADER = Pattern.compile("(?m)^#{1,6} .+$");
+    // Fenced code blocks ``` ... ```
+    private static final Pattern MD_CODE_BLOCK = Pattern.compile("(?ms)```.*?```");
+    // Inline code `foo`
+    private static final Pattern MD_INLINE_CODE = Pattern.compile("`[^`\\n]+`");
+    // Bold **foo** or __foo__
+    private static final Pattern MD_BOLD = Pattern.compile("(\\*\\*|__)(?=\\S)(.+?)(?<=\\S)\\1");
+    // Italic *foo* or _foo_ (single — must NOT match bold)
+    private static final Pattern MD_ITALIC = Pattern.compile("(?<![\\*_])(\\*|_)(?=\\S)(?!\\1)(.+?)(?<=\\S)\\1(?![\\*_])");
+    // Links [text](url)
+    private static final Pattern MD_LINK = Pattern.compile("\\[([^\\]]+)\\]\\(([^\\s)]+)\\)");
+    // Block quote
+    private static final Pattern MD_QUOTE = Pattern.compile("(?m)^> .+$");
+    // List items (- or * or + at line start)
+    private static final Pattern MD_LIST = Pattern.compile("(?m)^\\s*[-*+] .+$");
+    // Horizontal rule
+    private static final Pattern MD_HR = Pattern.compile("(?m)^---+$");
+
+    private static void highlightMarkdown(SpannableStringBuilder sb) {
+        // Order matters: apply more specific patterns first
+        applySpan(sb, MD_CODE_BLOCK, new ForegroundColorSpan(COLOR_STRING),
+                new StyleSpan(android.graphics.Typeface.MONOSPACE));
+        applySpan(sb, MD_HEADER, new ForegroundColorSpan(COLOR_TAG),
+                new StyleSpan(android.graphics.Typeface.BOLD));
+        applySpan(sb, MD_HR, new ForegroundColorSpan(COLOR_COMMENT));
+        applySpan(sb, MD_QUOTE, new ForegroundColorSpan(COLOR_COMMENT),
+                new StyleSpan(android.graphics.Typeface.ITALIC));
+        applySpan(sb, MD_INLINE_CODE, new ForegroundColorSpan(COLOR_STRING),
+                new StyleSpan(android.graphics.Typeface.MONOSPACE));
+        applySpan(sb, MD_LINK, new ForegroundColorSpan(COLOR_KEYWORD));
+        applySpan(sb, MD_LIST, new ForegroundColorSpan(COLOR_ATTR));
+        applySpan(sb, MD_BOLD, new ForegroundColorSpan(COLOR_ATTR),
+                new StyleSpan(android.graphics.Typeface.BOLD));
+        applySpan(sb, MD_ITALIC, new ForegroundColorSpan(COLOR_STRING),
+                new StyleSpan(android.graphics.Typeface.ITALIC));
     }
 
     /* ============== utilities ============== */

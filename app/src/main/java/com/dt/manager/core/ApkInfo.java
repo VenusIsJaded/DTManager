@@ -113,14 +113,14 @@ public class ApkInfo {
 
     public static String sdkToVersionName(int sdk) {
         switch (sdk) {
-            case 21: return "5.0 Lollipop";
-            case 22: return "5.1 Lollipop";
-            case 23: return "6.0 Marshmallow";
-            case 24: return "7.0 Nougat";
-            case 25: return "7.1 Nougat";
-            case 26: return "8.0 Oreo";
-            case 27: return "8.1 Oreo";
-            case 28: return "9 Pie";
+            case 21: return "5.0";
+            case 22: return "5.1";
+            case 23: return "6.0";
+            case 24: return "7.0";
+            case 25: return "7.1";
+            case 26: return "8.0";
+            case 27: return "8.1";
+            case 28: return "9";
             case 29: return "10";
             case 30: return "11";
             case 31: return "12";
@@ -128,7 +128,9 @@ public class ApkInfo {
             case 33: return "13";
             case 34: return "14";
             case 35: return "15";
-            default: return "API " + sdk;
+            case 36: return "16";
+            case 37: return "16";
+            default: return String.valueOf(sdk);
         }
     }
 }

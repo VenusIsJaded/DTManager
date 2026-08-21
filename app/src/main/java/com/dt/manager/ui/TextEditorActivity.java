@@ -117,26 +117,42 @@ public class TextEditorActivity extends AppCompatActivity {
 
     private void loadFromApk(String apkPath, String entryPath) {
         fromApk = true;
-        try (com.dt.manager.core.ApkInspector inspector =
-                     new com.dt.manager.core.ApkInspector(new File(apkPath))) {
-            InputStream in = inspector.openStream(entryPath);
-            byte[] raw = readAllBytes(in);
-            in.close();
-            String text = decodeBytes(raw);
+        // Cache key: hash of (apk absolute path + entry path) so each entry
+        // from each APK gets its own cache file that survives across sessions.
+        // This is what makes edits persist when re-opening the entry.
+        String key = Integer.toHexString((apkPath + "#" + entryPath).hashCode());
+        File cacheDir = new File(getCacheDir(), "apk_edits");
+        cacheDir.mkdirs();
+        File staged = new File(cacheDir, key + "_" + new File(entryPath).getName());
 
-            // Stage to cache so we can "save" (to cache — APK repackage not supported yet)
-            File staged = new File(getCacheDir(), new File(entryPath).getName());
-            try (FileOutputStream out = new FileOutputStream(staged)) {
-                out.write(text.getBytes(StandardCharsets.UTF_8));
+        if (!staged.exists()) {
+            // First time opening — extract from APK
+            try (com.dt.manager.core.ApkInspector inspector =
+                         new com.dt.manager.core.ApkInspector(new File(apkPath))) {
+                InputStream in = inspector.openStream(entryPath);
+                byte[] raw = readAllBytes(in);
+                in.close();
+                String text = decodeBytes(raw);
+                try (FileOutputStream out = new FileOutputStream(staged)) {
+                    out.write(text.getBytes(StandardCharsets.UTF_8));
+                }
+            } catch (IOException e) {
+                Toast.makeText(this, "Failed to open entry: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                finish();
+                return;
             }
-            workingFile = staged;
+        }
 
+        workingFile = staged;
+        try (FileInputStream in = new FileInputStream(staged)) {
+            byte[] raw = readAllBytes(in);
+            String text = new String(raw, StandardCharsets.UTF_8);
             editor.setLanguage(SyntaxHighlighter.detectLanguage(new File(entryPath).getName()));
             editor.setText(text);
             dirty = false;
             updateStatus();
         } catch (IOException e) {
-            Toast.makeText(this, "Failed to open entry: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Failed to load cached copy: " + e.getMessage(), Toast.LENGTH_LONG).show();
             finish();
         }
     }

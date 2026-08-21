@@ -257,6 +257,11 @@ public class MainActivity extends AppCompatActivity {
             String name = f.getName().toLowerCase();
             if (name.endsWith(".apk") || name.endsWith(".xapk") || name.endsWith(".apkm")) {
                 showApkInfoDialog(f);
+            } else if (name.endsWith(".zip")) {
+                // Treat ZIP like a generic APK viewer (browse internal files)
+                Intent intent = new Intent(this, ApkViewerActivity.class);
+                intent.putExtra(ApkViewerActivity.EXTRA_APK_PATH, f.getAbsolutePath());
+                startActivity(intent);
             } else if (isTextFile(name)) {
                 openTextEditor(f);
             } else {

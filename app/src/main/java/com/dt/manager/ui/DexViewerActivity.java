@@ -5,7 +5,10 @@ import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.ProgressBar;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -19,35 +22,45 @@ import com.dt.manager.R;
 import com.dt.manager.adapter.DexNodeAdapter;
 import com.dt.manager.core.ApkInspector;
 import com.dt.manager.core.DexParser;
+import com.dt.manager.core.SmaliGenerator;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.tabs.TabLayout;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
 public class DexViewerActivity extends AppCompatActivity {
 
     public static final String EXTRA_APK_PATH = "apk_path";
+    public static final String EXTRA_DEX_ENTRIES = "dex_entries"; // ArrayList<String>
     public static final String EXTRA_DEX_ENTRY = "dex_entry";
     public static final String EXTRA_DEX_FILE = "dex_file";
 
     private MaterialToolbar toolbar;
+    private Spinner dexSpinner;
     private TabLayout tabs;
     private RecyclerView recyclerView;
     private TextView emptyView;
     private ProgressBar loading;
 
-    private File apkFile;
-    private File dexFile;
-    private String dexEntryPath;
+    private String apkPath;
+    private ArrayList<String> dexEntries;
+    private int currentDexIndex = 0;
+
     private ApkInspector inspector;
+    private File currentDexFile;
 
     private DexNodeAdapter adapter;
     private DexParser parser;
     private DexParser.Node root;
 
-    private int currentTab = 0; // 0=explorer, 1=history, 2=search, 3=strings
+    private int currentTab = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,6 +68,7 @@ public class DexViewerActivity extends AppCompatActivity {
         setContentView(R.layout.activity_dex_viewer);
 
         toolbar = findViewById(R.id.toolbar);
+        dexSpinner = findViewById(R.id.dexSpinner);
         tabs = findViewById(R.id.tabs);
         recyclerView = findViewById(R.id.recyclerView);
         emptyView = findViewById(R.id.emptyView);
@@ -81,44 +95,80 @@ public class DexViewerActivity extends AppCompatActivity {
 
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         adapter = new DexNodeAdapter(this, node -> {
-            // Class tapped — show class details
-            showClassDetails(node);
+            // Class tapped — open the smali editor
+            openClassInSmaliEditor(node);
         });
         recyclerView.setAdapter(adapter);
 
-        loadDexFile();
+        loadDex();
     }
 
-    private void loadDexFile() {
-        String apkPath = getIntent().getStringExtra(EXTRA_APK_PATH);
-        String entry = getIntent().getStringExtra(EXTRA_DEX_ENTRY);
-        String dexPath = getIntent().getStringExtra(EXTRA_DEX_FILE);
+    @SuppressWarnings("unchecked")
+    private void loadDex() {
+        apkPath = getIntent().getStringExtra(EXTRA_APK_PATH);
+        dexEntries = (ArrayList<String>) getIntent().getSerializableExtra(EXTRA_DEX_ENTRIES);
+        if (dexEntries == null || dexEntries.isEmpty()) {
+            // Fallback to single-entry mode
+            String single = getIntent().getStringExtra(EXTRA_DEX_ENTRY);
+            if (single != null) {
+                dexEntries = new ArrayList<>();
+                dexEntries.add(single);
+            }
+        }
 
+        String dexPath = getIntent().getStringExtra(EXTRA_DEX_FILE);
         if (dexPath != null) {
-            dexFile = new File(dexPath);
-            toolbar.setSubtitle(dexFile.getName());
+            dexEntries = new ArrayList<>();
+            dexEntries.add(new File(dexPath).getName());
+            currentDexFile = new File(dexPath);
+            // hide spinner
+            dexSpinner.setVisibility(View.GONE);
+            toolbar.setSubtitle(new File(dexPath).getName());
             startParse();
             return;
         }
 
-        if (apkPath != null && entry != null) {
-            apkFile = new File(apkPath);
-            dexEntryPath = entry;
-            toolbar.setSubtitle(entry);
-            try {
-                inspector = new ApkInspector(apkFile);
-                File cached = com.dt.manager.util.FileUtils.copyToCache(this,
-                        inspector.openStream(entry), entry.replace("/", "_"));
-                dexFile = cached;
-                startParse();
-            } catch (Exception e) {
-                Toast.makeText(this, getString(R.string.error_open_dex) + ": " + e.getMessage(),
-                        Toast.LENGTH_LONG).show();
-                finish();
-            }
-        } else {
+        if (apkPath == null || dexEntries == null || dexEntries.isEmpty()) {
             Toast.makeText(this, R.string.error_open_dex, Toast.LENGTH_SHORT).show();
             finish();
+            return;
+        }
+
+        // Set up the spinner with all dex entries
+        if (dexEntries.size() <= 1) {
+            dexSpinner.setVisibility(View.GONE);
+        } else {
+            ArrayAdapter<String> spinnerAdapter = new ArrayAdapter<>(
+                    this, R.layout.spinner_item_dark, dexEntries);
+            spinnerAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item_dark);
+            dexSpinner.setAdapter(spinnerAdapter);
+            dexSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                    if (position != currentDexIndex) {
+                        currentDexIndex = position;
+                        loadDexFile(dexEntries.get(position));
+                    }
+                }
+                @Override public void onNothingSelected(AdapterView<?> parent) {}
+            });
+        }
+
+        loadDexFile(dexEntries.get(currentDexIndex));
+    }
+
+    private void loadDexFile(String entryPath) {
+        toolbar.setSubtitle(entryPath);
+        try {
+            if (inspector == null) {
+                inspector = new ApkInspector(new File(apkPath));
+            }
+            File cached = com.dt.manager.util.FileUtils.copyToCache(this,
+                    inspector.openStream(entryPath), entryPath.replace("/", "_"));
+            currentDexFile = cached;
+            startParse();
+        } catch (Exception e) {
+            Toast.makeText(this, getString(R.string.error_open_dex) + ": " + e.getMessage(),
+                    Toast.LENGTH_LONG).show();
         }
     }
 
@@ -133,7 +183,7 @@ public class DexViewerActivity extends AppCompatActivity {
         @Override
         protected DexParser.Node doInBackground(Void... voids) {
             try {
-                parser = new DexParser(dexFile);
+                parser = new DexParser(currentDexFile);
                 root = parser.buildTree();
                 return root;
             } catch (Exception e) {
@@ -219,8 +269,8 @@ public class DexViewerActivity extends AppCompatActivity {
         adapter.setRoot(null);
     }
 
-    /** Show class details dialog with fields and methods. */
-    private void showClassDetails(DexParser.Node node) {
+    /** Open the class in a smali editor instead of showing a popup. */
+    private void openClassInSmaliEditor(DexParser.Node node) {
         if (parser == null) {
             Toast.makeText(this, "DEX not loaded", Toast.LENGTH_SHORT).show();
             return;
@@ -230,29 +280,21 @@ public class DexViewerActivity extends AppCompatActivity {
             Toast.makeText(this, "Class not found in DEX", Toast.LENGTH_SHORT).show();
             return;
         }
-        DexParser.ClassData data = parser.parseClassData(cd);
-        String superclass = parser.superclass(cd);
-        String sourceFile = parser.sourceFile(cd);
-
-        StringBuilder sb = new StringBuilder();
-        if (!sourceFile.isEmpty()) sb.append("Source: ").append(sourceFile).append("\n");
-        if (!superclass.isEmpty()) sb.append("Superclass: ").append(superclass).append("\n");
-        sb.append("\n== Fields (").append(data.fields.size()).append(") ==\n");
-        for (DexParser.FieldInfo f : data.fields) {
-            sb.append(f.modifierPrefix()).append(" ").append(f.type).append(" ").append(f.name);
-            sb.append(f.isStatic ? " [static]\n" : "\n");
+        String smali = SmaliGenerator.generate(parser, cd);
+        // Write to a cache file and open the editor
+        try {
+            File outFile = new File(getCacheDir(),
+                    "smali_" + System.currentTimeMillis() + "_" + node.name + ".smali");
+            try (FileOutputStream fos = new FileOutputStream(outFile);
+                 Writer w = new OutputStreamWriter(fos, StandardCharsets.UTF_8)) {
+                w.write(smali);
+            }
+            Intent intent = new Intent(this, TextEditorActivity.class);
+            intent.putExtra(TextEditorActivity.EXTRA_FILE_PATH, outFile.getAbsolutePath());
+            startActivity(intent);
+        } catch (IOException e) {
+            Toast.makeText(this, "Failed to open smali: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
-        sb.append("\n== Methods (").append(data.methods.size()).append(") ==\n");
-        for (DexParser.MethodInfo m : data.methods) {
-            sb.append(m.modifierPrefix()).append(" ").append(m.name).append(m.prototype);
-            sb.append(m.isDirect ? " [direct]\n" : "\n");
-        }
-
-        new AlertDialog.Builder(this)
-                .setTitle(node.name)
-                .setMessage(sb.toString())
-                .setPositiveButton(android.R.string.ok, null)
-                .show();
     }
 
     @Override
@@ -272,7 +314,7 @@ public class DexViewerActivity extends AppCompatActivity {
             renderSearch();
             return true;
         } else if (id == R.id.action_refresh) {
-            if (dexFile != null) startParse();
+            if (currentDexFile != null) startParse();
             return true;
         }
         return super.onOptionsItemSelected(item);
