@@ -1,0 +1,142 @@
+[
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/layout_activity_main.xml.flat",
+        "source": "com.dt.manager.app-main-34:/layout/activity_main.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/layout_item_apk_info_row.xml.flat",
+        "source": "com.dt.manager.app-main-34:/layout/item_apk_info_row.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/layout_activity_dex_viewer.xml.flat",
+        "source": "com.dt.manager.app-main-34:/layout/activity_dex_viewer.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/layout_view_file_pane.xml.flat",
+        "source": "com.dt.manager.app-main-34:/layout/view_file_pane.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/drawable_ic_launcher_foreground.xml.flat",
+        "source": "com.dt.manager.app-main-34:/drawable/ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/layout_activity_text_editor.xml.flat",
+        "source": "com.dt.manager.app-main-34:/layout/activity_text_editor.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/menu_menu_main.xml.flat",
+        "source": "com.dt.manager.app-main-34:/menu/menu_main.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/drawable_ic_menu.xml.flat",
+        "source": "com.dt.manager.app-main-34:/drawable/ic_menu.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/drawable_ic_apk.xml.flat",
+        "source": "com.dt.manager.app-main-34:/drawable/ic_apk.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/drawable_bg_card.xml.flat",
+        "source": "com.dt.manager.app-main-34:/drawable/bg_card.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/menu_menu_editor.xml.flat",
+        "source": "com.dt.manager.app-main-34:/menu/menu_editor.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/drawable_ic_folder.xml.flat",
+        "source": "com.dt.manager.app-main-34:/drawable/ic_folder.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/layout_spinner_dropdown_item_dark.xml.flat",
+        "source": "com.dt.manager.app-main-34:/layout/spinner_dropdown_item_dark.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/drawable_ic_install.xml.flat",
+        "source": "com.dt.manager.app-main-34:/drawable/ic_install.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/layout_item_file.xml.flat",
+        "source": "com.dt.manager.app-main-34:/layout/item_file.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/drawable_bg_icon_default.xml.flat",
+        "source": "com.dt.manager.app-main-34:/drawable/bg_icon_default.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/xml_file_paths.xml.flat",
+        "source": "com.dt.manager.app-main-34:/xml/file_paths.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/layout_spinner_item_dark.xml.flat",
+        "source": "com.dt.manager.app-main-34:/layout/spinner_item_dark.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/drawable_ic_arrow_back.xml.flat",
+        "source": "com.dt.manager.app-main-34:/drawable/ic_arrow_back.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/layout_item_dex_node.xml.flat",
+        "source": "com.dt.manager.app-main-34:/layout/item_dex_node.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/drawable_bg_toolbar.xml.flat",
+        "source": "com.dt.manager.app-main-34:/drawable/bg_toolbar.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/drawable_ic_xml.xml.flat",
+        "source": "com.dt.manager.app-main-34:/drawable/ic_xml.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/drawable_ic_refresh.xml.flat",
+        "source": "com.dt.manager.app-main-34:/drawable/ic_refresh.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/drawable_ic_file.xml.flat",
+        "source": "com.dt.manager.app-main-34:/drawable/ic_file.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "com.dt.manager.app-main-34:/mipmap-anydpi-v26/ic_launcher.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/drawable_ic_launcher_background.xml.flat",
+        "source": "com.dt.manager.app-main-34:/drawable/ic_launcher_background.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/menu_menu_apk.xml.flat",
+        "source": "com.dt.manager.app-main-34:/menu/menu_apk.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/drawable_ic_dex.xml.flat",
+        "source": "com.dt.manager.app-main-34:/drawable/ic_dex.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/layout_activity_about.xml.flat",
+        "source": "com.dt.manager.app-main-34:/layout/activity_about.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/layout_dialog_apk_info.xml.flat",
+        "source": "com.dt.manager.app-main-34:/layout/dialog_apk_info.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/drawable_ic_more.xml.flat",
+        "source": "com.dt.manager.app-main-34:/drawable/ic_more.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/drawable_ic_search.xml.flat",
+        "source": "com.dt.manager.app-main-34:/drawable/ic_search.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/layout_activity_apk_viewer.xml.flat",
+        "source": "com.dt.manager.app-main-34:/layout/activity_apk_viewer.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "com.dt.manager.app-main-34:/mipmap-anydpi-v26/ic_launcher_round.xml"
+    },
+    {
+        "merged": "com.dt.manager.app-merged_res-33:/menu_menu_dex.xml.flat",
+        "source": "com.dt.manager.app-main-34:/menu/menu_dex.xml"
+    }
+]

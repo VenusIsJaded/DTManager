@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="http://schemas.android.com/tools">
+    <color name="accent_blue">#FF3EA6FF</color>
+    <color name="accent_blue_dark">#FF1F88E5</color>
+    <color name="accent_green">#FF4DD0A0</color>
+    <color name="accent_orange">#FFFFB74D</color>
+    <color name="accent_purple">#FFB388FF</color>
+    <color name="accent_red">#FFEF5350</color>
+    <color name="bg_hover">#FF333333</color>
+    <color name="bg_primary">#FF101010</color>
+    <color name="bg_secondary">#FF1B1B1B</color>
+    <color name="bg_tertiary">#FF262626</color>
+    <color name="black">#FF000000</color>
+    <color name="divider">#FF2C2C2C</color>
+    <color name="icon_apk_bg">#FF3D2E1F</color>
+    <color name="icon_arsc_bg">#FF7C3A12</color>
+    <color name="icon_default_bg">#FF374151</color>
+    <color name="icon_dex_bg">#FF0F4D44</color>
+    <color name="icon_folder_bg">#FF2A2A2A</color>
+    <color name="icon_xml_bg">#FF1E3A8A</color>
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#FFB3B3B3</color>
+    <color name="text_tertiary">#FF808080</color>
+    <color name="white">#FFFFFFFF</color>
+    <string name="about_text">DT Manager\nVersion 0.1.0\n\nA simple APK inspector and Dex viewer inspired by MT Manager. Built with native Android (target API 28).</string>
+    <string name="action_back">Back</string>
+    <string name="action_browse_apk">Browse APK contents</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_cut">Cut</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_details">Details</string>
+    <string name="action_extract">Extract</string>
+    <string name="action_install">Install</string>
+    <string name="action_more">More</string>
+    <string name="action_open_dex">Open in Dex Editor</string>
+    <string name="action_open_dex_editor">Open in Dex Editor</string>
+    <string name="action_paste">Paste here</string>
+    <string name="action_properties">Properties</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_save">Save</string>
+    <string name="action_save_to_apk">Save to APK</string>
+    <string name="action_search">Search</string>
+    <string name="action_view">View inside</string>
+    <string name="action_view_inside">View inside</string>
+    <string name="app_name">DT Manager</string>
+    <string name="auto_saved">Auto-saved</string>
+    <string name="auto_sign_message">Save changes to the APK file? It will be re-signed with DT Manager\'s debug key.</string>
+    <string name="auto_sign_no">Don\'t sign</string>
+    <string name="auto_sign_title">Auto-sign APK?</string>
+    <string name="auto_sign_yes">Auto-sign</string>
+    <string name="clipboard_empty">Clipboard is empty</string>
+    <string name="empty_dex">No classes found</string>
+    <string name="empty_dir">Empty folder</string>
+    <string name="empty_search">No results</string>
+    <string name="empty_strings">No strings found</string>
+    <string name="error_no_handler">No app available to handle this file</string>
+    <string name="error_not_implemented">Not implemented yet</string>
+    <string name="error_open_apk">Cannot open APK file</string>
+    <string name="error_open_dex">Cannot open DEX file</string>
+    <string name="file_androidmanifest">AndroidManifest.xml</string>
+    <string name="file_classes_dex">classes.dex</string>
+    <string name="file_resources_arsc">resources.arsc</string>
+    <string name="format_size_bytes">%1$s</string>
+    <string name="format_summary">Folders: %1$d  Files: %2$d</string>
+    <string name="format_summary_disk">Folders: %1$d  Files: %2$d  Disk: %3$s/%4$s</string>
+    <string name="grant">Grant</string>
+    <string name="grant_install_perm">Install permission is required to install packages</string>
+    <string name="grant_storage_perm">Storage permission is required to browse files</string>
+    <string name="install_apk_title">Install APK</string>
+    <string name="install_apkm_title">Install APKM</string>
+    <string name="install_fail">Install failed: %1$s</string>
+    <string name="install_success">Install requested successfully</string>
+    <string name="install_xapk_title">Install XAPK</string>
+    <string name="installing">Installing…</string>
+    <string name="nav_about">About</string>
+    <string name="nav_storage">Internal Storage</string>
+    <string name="parent_dir">..</string>
+    <string name="paste_done">Pasted to %1$s</string>
+    <string name="paste_fail">Paste failed: %1$s</string>
+    <string name="repack_fail">Failed to rebuild APK: %1$s</string>
+    <string name="repack_progress">Repacking APK…</string>
+    <string name="repack_success">APK rebuilt and signed — saved to disk</string>
+    <string name="repack_warn_binary_xml">This file was originally binary XML. Saving as text XML to the APK may break it. Continue?</string>
+    <string name="tab_explorer">EXPLORER</string>
+    <string name="tab_history">HISTORY</string>
+    <string name="tab_search">SEARCH</string>
+    <string name="tab_strings">STRINGS</string>
+    <string name="title_about">About</string>
+    <string name="title_apk_viewer">APK Inspector</string>
+    <string name="title_dex_viewer">Dex Editor</string>
+    <string name="title_editor">Editor</string>
+    <style name="TextAppearance.ListItemPrimary" parent="TextAppearance.MaterialComponents.Body1">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+    <style name="TextAppearance.ListItemSecondary" parent="TextAppearance.MaterialComponents.Caption">
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+    <style name="TextAppearance.Subtitle" parent="TextAppearance.MaterialComponents.Caption">
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+    <style name="TextAppearance.Tab" parent="TextAppearance.MaterialComponents.Button">
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+    <style name="TextAppearance.Title" parent="TextAppearance.MaterialComponents.Headline6">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+    <style name="Theme.DTManager" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">@color/accent_blue</item>
+        <item name="colorPrimaryDark">@color/accent_blue_dark</item>
+        <item name="colorAccent">@color/accent_blue</item>
+        <item name="android:windowBackground">@color/bg_primary</item>
+        <item name="android:colorBackground">@color/bg_primary</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:statusBarColor">@color/bg_primary</item>
+        <item name="android:navigationBarColor">@color/bg_primary</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar" ns1:targetApi="o_mr1">false</item>
+    </style>
+</resources>
