@@ -189,13 +189,26 @@ public class ApkRepacker {
                 while (en.hasMoreElements()) {
                     ZipEntry inEntry = en.nextElement();
                     if (inEntry.isDirectory()) continue;
-                    zos.putNextEntry(new ZipEntry(inEntry.getName()));
                     byte[] data = readAll(tempZip.getInputStream(inEntry));
+                    // CRITICAL: Preserve the compression method from the temp file.
+                    // Previously this used `new ZipEntry(name)` which defaults to
+                    // DEFLATED, changing all STORED entries (resources.arsc, .so)
+                    // to DEFLATED and breaking the APK.
+                    ZipEntry outEntry = new ZipEntry(inEntry.getName());
+                    outEntry.setMethod(inEntry.getMethod());
+                    if (inEntry.getMethod() == ZipEntry.STORED) {
+                        outEntry.setSize(data.length);
+                        outEntry.setCompressedSize(data.length);
+                        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                        crc.update(data);
+                        outEntry.setCrc(crc.getValue());
+                    }
+                    zos.putNextEntry(outEntry);
                     zos.write(data);
                     zos.closeEntry();
                 }
 
-                // Add the signature files
+                // Add the signature files (these can be DEFLATED)
                 zos.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF"));
                 zos.write(manifestBytes);
                 zos.closeEntry();
