@@ -1,8 +1,0 @@
-# Linguist overrides to ignore non-project vendor data and ensure Kotlin is detected as the primary language
-android-9/** linguist-vendored
-skills/** linguist-vendored
-work/** linguist-vendored
-download/** linguist-vendored
-*.apk binary
-*.dex binary
-*.jar binary
