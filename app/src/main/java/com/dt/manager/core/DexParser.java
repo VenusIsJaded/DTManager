@@ -241,10 +241,10 @@ public class DexParser implements Closeable {
         String returnDesc = typeDescriptor(p.returnTypeIdx);
         StringBuilder params = new StringBuilder();
         if (p.paramsOff != 0) {
-            // type_list: uint size, then size * uint type_idx
+            // type_list: uint size, then size * ushort type_idx
             int count = readInt(p.paramsOff);
             for (int i = 0; i < count; i++) {
-                int t = readInt(p.paramsOff + 4 + i * 4);
+                int t = readUShort(p.paramsOff + 4 + i * 2);
                 if (i > 0) params.append(", ");
                 params.append(descriptorToName(typeDescriptor(t)));
             }
@@ -380,6 +380,7 @@ public class DexParser implements Closeable {
             fieldIdx += diff;
             fields.add(new FieldInfo(fieldName(fieldIdx), fieldTypeName(fieldIdx), access, true));
         }
+        fieldIdx = 0;
         for (int i = 0; i < instanceFieldsCount; i++) {
             r = readUleb128(pos); int diff = r[0]; pos = r[1];
             r = readUleb128(pos); int access = r[0]; pos = r[1];
@@ -396,6 +397,7 @@ public class DexParser implements Closeable {
             methodIdx += diff;
             methods.add(new MethodInfo(methodName(methodIdx), methodPrototype(methodIdx), access, true, codeOff));
         }
+        methodIdx = 0;
         for (int i = 0; i < virtualMethodsCount; i++) {
             r = readUleb128(pos); int diff = r[0]; pos = r[1];
             r = readUleb128(pos); int access = r[0]; pos = r[1];

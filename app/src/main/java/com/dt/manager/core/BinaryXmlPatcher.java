@@ -140,33 +140,35 @@ public final class BinaryXmlPatcher {
     private static String readString(byte[] data, int pos, boolean utf8) {
         if (utf8) {
             int p = pos;
-            // Skip 2 uleb128 values (char length, byte length)
-            for (int i = 0; i < 2; i++) {
-                while (p < data.length && (data[p] & 0x80) != 0) p++;
-                p++;
-            }
+            int u16len = decodeLength8(data, p);
+            p += (u16len > 0x7F ? 2 : 1);
+            int u8len = decodeLength8(data, p);
+            p += (u8len > 0x7F ? 2 : 1);
             int start = p;
-            while (p < data.length && data[p] != 0) p++;
-            return new String(data, start, p - start, StandardCharsets.UTF_8);
+            return new String(data, start, Math.min(u8len, data.length - start), StandardCharsets.UTF_8);
         } else {
             // UTF-16
-            int len = ((data[pos] & 0xFF)) | ((data[pos + 1] & 0xFF) << 8);
+            int s0 = ((data[pos] & 0xFF)) | ((data[pos + 1] & 0xFF) << 8);
+            int len = s0;
             int charsStart = pos + 2;
-            if (len < 0) {
-                // length is in next 4 bytes
-                len = (data[pos] & 0xFF) | ((data[pos + 1] & 0xFF) << 8) |
-                      ((data[pos + 2] & 0xFF) << 16) | ((data[pos + 3] & 0xFF) << 24);
-                charsStart = pos + 4;
-            }
-            // Handle sign extension for large lengths
-            if (len > 0x7FFF) {
-                len = ((~len) & 0x7FFFFFFF);
+            if ((s0 & 0x8000) != 0) {
+                int s1 = ((data[pos + 2] & 0xFF)) | ((data[pos + 3] & 0xFF) << 8);
+                len = ((s0 & 0x7FFF) << 16) | s1;
                 charsStart = pos + 4;
             }
             byte[] chars = new byte[len * 2];
             System.arraycopy(data, charsStart, chars, 0, Math.min(len * 2, data.length - charsStart));
             return new String(chars, StandardCharsets.UTF_16LE);
         }
+    }
+
+    private static int decodeLength8(byte[] data, int offset) {
+        int b0 = data[offset] & 0xFF;
+        if ((b0 & 0x80) != 0) {
+            int b1 = data[offset + 1] & 0xFF;
+            return ((b0 & 0x7F) << 8) | b1;
+        }
+        return b0;
     }
 
     /* ===== XML diff ===== */
@@ -215,7 +217,7 @@ public final class BinaryXmlPatcher {
         for (String s : strings) {
             if (utf8) {
                 int byteLen = s.getBytes(StandardCharsets.UTF_8).length;
-                stringsDataSize += uleb128Size(byteLen) + uleb128Size(s.length()) + byteLen + 1; // +1 for NUL
+                stringsDataSize += length8Size(s.length()) + length8Size(byteLen) + byteLen + 1; // +1 for NUL
             } else {
                 stringsDataSize += 2 + s.length() * 2 + 2; // u16 length + chars + NUL
             }
@@ -248,7 +250,7 @@ public final class BinaryXmlPatcher {
             buf.putInt(currentOffset);
             if (utf8) {
                 int byteLen = s.getBytes(StandardCharsets.UTF_8).length;
-                currentOffset += uleb128Size(byteLen) + uleb128Size(s.length()) + byteLen + 1;
+                currentOffset += length8Size(s.length()) + length8Size(byteLen) + byteLen + 1;
             } else {
                 currentOffset += 2 + s.length() * 2 + 2;
             }
@@ -259,8 +261,8 @@ public final class BinaryXmlPatcher {
             byte[] strBytes;
             if (utf8) {
                 strBytes = s.getBytes(StandardCharsets.UTF_8);
-                writeUleb128(buf, s.length()); // char count
-                writeUleb128(buf, strBytes.length); // byte count
+                writeLength8(buf, s.length()); // char count
+                writeLength8(buf, strBytes.length); // byte count
                 buf.put(strBytes);
                 buf.put((byte) 0); // NUL
             } else {
@@ -274,24 +276,16 @@ public final class BinaryXmlPatcher {
         return buf.array();
     }
 
-    private static int uleb128Size(int value) {
-        int size = 1;
-        while ((value >>> 7) != 0) {
-            size++;
-            value >>>= 7;
-        }
-        return size;
+    private static int length8Size(int value) {
+        return value > 0x7F ? 2 : 1;
     }
 
-    private static void writeUleb128(ByteBuffer buf, int value) {
-        while (true) {
-            int b = value & 0x7F;
-            value >>>= 7;
-            if (value != 0) {
-                b |= 0x80;
-            }
-            buf.put((byte) b);
-            if (value == 0) break;
+    private static void writeLength8(ByteBuffer buf, int value) {
+        if (value > 0x7F) {
+            buf.put((byte) (0x80 | ((value >> 8) & 0x7F)));
+            buf.put((byte) (value & 0xFF));
+        } else {
+            buf.put((byte) value);
         }
     }
 

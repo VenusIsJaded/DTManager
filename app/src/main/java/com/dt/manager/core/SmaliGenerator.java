@@ -59,8 +59,8 @@ public class SmaliGenerator {
             for (DexParser.FieldInfo f : data.fields) {
                 if (!f.isStatic) continue;
                 sb.append(".field ").append(f.modifierPrefix())
-                        .append(" ").append(nameToDescriptor(f.type))
-                        .append(":").append(f.name);
+                        .append(" ").append(f.name)
+                        .append(":").append(nameToDescriptor(f.type));
                 // We don't have the static initial value parsed, so just emit a comment
                 sb.append("\n");
             }
@@ -72,8 +72,8 @@ public class SmaliGenerator {
             for (DexParser.FieldInfo f : data.fields) {
                 if (f.isStatic) continue;
                 sb.append(".field ").append(f.modifierPrefix())
-                        .append(" ").append(nameToDescriptor(f.type))
-                        .append(":").append(f.name).append("\n");
+                        .append(" ").append(f.name)
+                        .append(":").append(nameToDescriptor(f.type)).append("\n");
             }
         }
 

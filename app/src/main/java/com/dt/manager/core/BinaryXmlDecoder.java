@@ -113,32 +113,29 @@ public final class BinaryXmlDecoder {
         buf.position(pos);
         try {
             if (utf8) {
-                // uleb128 length, then uleb128 byte length, then bytes, then NUL
-                int[] len = readUleb128(pos);
-                int[] byteLen = readUleb128(len[1]);
-                int start = byteLen[1];
-                int end = start;
-                while (end < buf.limit() && buf.get(end) != 0) end++;
-                byte[] data = new byte[end - start];
+                // AOSP ResStringPool format:
+                // u16len (1 or 2 bytes): if (b & 0x80) != 0 -> 2 bytes ((b & 0x7F) << 8) | nextByte
+                // u8len (1 or 2 bytes): if (b & 0x80) != 0 -> 2 bytes ((b & 0x7F) << 8) | nextByte
+                int u16len = decodeLength8(pos);
+                int u8lenOffset = pos + (u16len > 0x7F ? 2 : 1);
+                int u8len = decodeLength8(u8lenOffset);
+                int start = u8lenOffset + (u8len > 0x7F ? 2 : 1);
+                byte[] data = new byte[u8len];
                 buf.position(start);
                 buf.get(data);
                 return new String(data, StandardCharsets.UTF_8);
             } else {
-                // UTF-16: u16 length, u16 chars, u16 NUL
-                int len = buf.getShort() & 0xFFFF;
-                // Some files use the high bit as a flag for "length is in next int"
-                if ((len & 0x80000000) != 0) {
-                    // Not possible for u16
+                // UTF-16: u16 length (or 2 u16 if high bit set), u16 chars, u16 NUL
+                int s0 = buf.getShort() & 0xFFFF;
+                int len = s0;
+                if ((s0 & 0x8000) != 0) {
+                    int s1 = buf.getShort() & 0xFFFF;
+                    len = ((s0 & 0x7FFF) << 16) | s1;
                 }
-                // Android uses a slightly different scheme: if the high bit of the
-                // u16 length is set, the real length is a following u32.
-                // Per docs: if length has its high bit set, the next int has the
-                // actual length. Handle the simpler case here.
                 char[] chars = new char[len];
                 for (int i = 0; i < len; i++) {
                     chars[i] = buf.getChar();
                 }
-                buf.getShort(); // NUL terminator
                 return new String(chars);
             }
         } finally {
@@ -146,17 +143,13 @@ public final class BinaryXmlDecoder {
         }
     }
 
-    private int[] readUleb128(int pos) {
-        int result = 0;
-        int shift = 0;
-        int p = pos;
-        while (true) {
-            byte b = buf.get(p++);
-            result |= (b & 0x7F) << shift;
-            if ((b & 0x80) == 0) break;
-            shift += 7;
+    private int decodeLength8(int offset) {
+        int b0 = buf.get(offset) & 0xFF;
+        if ((b0 & 0x80) != 0) {
+            int b1 = buf.get(offset + 1) & 0xFF;
+            return ((b0 & 0x7F) << 8) | b1;
         }
-        return new int[]{result, p};
+        return b0;
     }
 
     private void parseResourceMap(int chunkSize) {
