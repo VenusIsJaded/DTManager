@@ -5,16 +5,16 @@
     android:layout_height="wrap_content"
     android:background="?attr/selectableItemBackground"
     android:gravity="center_vertical"
-    android:minHeight="56dp"
+    android:minHeight="40dp"
     android:orientation="horizontal"
-    android:paddingStart="16dp"
-    android:paddingTop="8dp"
-    android:paddingEnd="16dp"
-    android:paddingBottom="8dp">
+    android:paddingStart="12dp"
+    android:paddingTop="4dp"
+    android:paddingEnd="12dp"
+    android:paddingBottom="4dp">
 
     <FrameLayout
-        android:layout_width="40dp"
-        android:layout_height="40dp">
+        android:layout_width="28dp"
+        android:layout_height="28dp">
 
         <ImageView
             android:id="@+id/iconBg"
@@ -25,8 +25,8 @@
 
         <ImageView
             android:id="@+id/icon"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
             android:layout_gravity="center"
             android:contentDescription="@null"
             android:src="@drawable/ic_file" />
@@ -35,7 +35,7 @@
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
+        android:layout_marginStart="10dp"
         android:layout_weight="1"
         android:orientation="vertical">
 
@@ -46,7 +46,7 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="@color/text_primary"
-            android:textSize="15sp"
+            android:textSize="13sp"
             tools:text="filename.ext" />
 
         <TextView
@@ -56,7 +56,7 @@
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="@color/text_secondary"
-            android:textSize="12sp"
+            android:textSize="10sp"
             tools:text="26-08-20 18:06   1.2 MB" />
     </LinearLayout>
 

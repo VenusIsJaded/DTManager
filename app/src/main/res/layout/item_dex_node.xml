@@ -5,10 +5,10 @@
     android:layout_height="wrap_content"
     android:background="?attr/selectableItemBackground"
     android:gravity="center_vertical"
-    android:minHeight="44dp"
+    android:minHeight="32dp"
     android:orientation="horizontal"
-    android:paddingTop="6dp"
-    android:paddingBottom="6dp">
+    android:paddingTop="3dp"
+    android:paddingBottom="3dp">
 
     <View
         android:id="@+id/indent"
@@ -17,18 +17,18 @@
 
     <ImageView
         android:id="@+id/expander"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
-        android:layout_marginStart="8dp"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:layout_marginStart="6dp"
         android:contentDescription="@null"
         android:src="@drawable/ic_arrow_back"
         android:visibility="gone"
         tools:visibility="visible" />
 
     <FrameLayout
-        android:layout_width="32dp"
-        android:layout_height="32dp"
-        android:layout_marginStart="6dp">
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_marginStart="4dp">
 
         <ImageView
             android:id="@+id/iconBg"
@@ -43,7 +43,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:textColor="@color/white"
-            android:textSize="14sp"
+            android:textSize="11sp"
             android:textStyle="bold"
             tools:text="C" />
     </FrameLayout>
@@ -52,12 +52,12 @@
         android:id="@+id/title"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
+        android:layout_marginStart="8dp"
         android:layout_weight="1"
         android:ellipsize="end"
         android:maxLines="1"
         android:textColor="@color/text_primary"
-        android:textSize="14sp"
+        android:textSize="12sp"
         tools:text="AppComponentFactory" />
 
 </LinearLayout>

@@ -22,6 +22,15 @@
     <string name="action_save">Save</string>
     <string name="action_details">Details</string>
     <string name="action_view_inside">View inside</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_cut">Cut</string>
+    <string name="action_paste">Paste here</string>
+    <string name="action_browse_apk">Browse APK contents</string>
+    <string name="action_open_dex_editor">Open in Dex Editor</string>
+    <string name="parent_dir">..</string>
+    <string name="paste_done">Pasted to %1$s</string>
+    <string name="paste_fail">Paste failed: %1$s</string>
+    <string name="clipboard_empty">Clipboard is empty</string>
 
     <string name="tab_explorer">EXPLORER</string>
     <string name="tab_history">HISTORY</string>

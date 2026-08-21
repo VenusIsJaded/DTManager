@@ -106,6 +106,72 @@ public final class FileUtils {
         return out;
     }
 
+    /**
+     * Copy a file or whole directory tree from src to dest. If dest exists,
+     * a numeric suffix is appended to the name (e.g. "foo (1).apk").
+     */
+    public static File copy(File src, File destDir) throws IOException {
+        File target = uniqueDestination(destDir, src.getName());
+        if (src.isDirectory()) {
+            copyDir(src, target);
+        } else {
+            copyFile(src, target);
+        }
+        return target;
+    }
+
+    private static void copyDir(File src, File dest) throws IOException {
+        if (!dest.exists()) dest.mkdirs();
+        File[] children = src.listFiles();
+        if (children == null) return;
+        for (File c : children) {
+            File childDest = new File(dest, c.getName());
+            if (c.isDirectory()) copyDir(c, childDest);
+            else copyFile(c, childDest);
+        }
+    }
+
+    private static void copyFile(File src, File dest) throws IOException {
+        try (java.io.FileInputStream in = new java.io.FileInputStream(src);
+             FileOutputStream out = new FileOutputStream(dest)) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        }
+    }
+
+    /** Recursively delete a file or directory. */
+    public static boolean deleteRecursive(File f) {
+        if (f == null || !f.exists()) return false;
+        if (f.isDirectory()) {
+            File[] children = f.listFiles();
+            if (children != null) {
+                for (File c : children) deleteRecursive(c);
+            }
+        }
+        return f.delete();
+    }
+
+    /** If target name already exists in destDir, append " (N)" before extension. */
+    public static File uniqueDestination(File destDir, String name) {
+        File target = new File(destDir, name);
+        if (!target.exists()) return target;
+        String base = name;
+        String ext = "";
+        int dot = name.lastIndexOf('.');
+        if (dot > 0 && dot < name.length() - 1) {
+            base = name.substring(0, dot);
+            ext = name.substring(dot);
+        }
+        int i = 1;
+        while (true) {
+            String candidate = base + " (" + i + ")" + ext;
+            File t = new File(destDir, candidate);
+            if (!t.exists()) return t;
+            i++;
+        }
+    }
+
     public static File getRootStoragePath(Context ctx) {
         File ext = Environment.getExternalStorageDirectory();
         if (ext != null && ext.exists()) return ext;

@@ -29,6 +29,9 @@ import java.util.concurrent.Executors;
 
 public class FileListAdapter extends RecyclerView.Adapter<FileListAdapter.VH> {
 
+    /** Sentinel prepended to listings to represent the ".." parent entry. */
+    public static final Object PARENT_MARKER = new Object();
+
     public interface OnItemClickListener {
         void onItemClicked(Object item);
         boolean onItemLongClicked(Object item);
@@ -66,8 +69,26 @@ public class FileListAdapter extends RecyclerView.Adapter<FileListAdapter.VH> {
     @Override
     public void onBindViewHolder(@NonNull VH h, int position) {
         Object o = items.get(position);
-        if (o instanceof File) bindFile(h, (File) o);
-        else if (o instanceof ApkInspector.EntryInfo) bindEntry(h, (ApkInspector.EntryInfo) o);
+        if (o == PARENT_MARKER) {
+            bindParent(h);
+        } else if (o instanceof File) {
+            bindFile(h, (File) o);
+        } else if (o instanceof ApkInspector.EntryInfo) {
+            bindEntry(h, (ApkInspector.EntryInfo) o);
+        }
+    }
+
+    private void bindParent(VH h) {
+        h.title.setText(R.string.parent_dir);
+        h.subtitle.setText("");
+        h.iconBg.setBackgroundResource(R.drawable.bg_icon_default);
+        h.icon.setImageResource(R.drawable.ic_folder);
+        h.icon.setTag(null);
+        h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.text_secondary), android.graphics.PorterDuff.Mode.SRC_ATOP);
+        h.itemView.setOnClickListener(v -> {
+            if (listener != null) listener.onItemClicked(PARENT_MARKER);
+        });
+        h.itemView.setOnLongClickListener(null);
     }
 
     private void bindFile(VH h, File f) {
@@ -116,7 +137,6 @@ public class FileListAdapter extends RecyclerView.Adapter<FileListAdapter.VH> {
     }
 
     private void loadApkIcon(VH h, File apkFile) {
-        // Reset to default while async load runs
         h.iconBg.setBackgroundResource(R.drawable.bg_icon_default);
         h.icon.setImageResource(R.drawable.ic_apk);
         h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.accent_green), android.graphics.PorterDuff.Mode.SRC_ATOP);

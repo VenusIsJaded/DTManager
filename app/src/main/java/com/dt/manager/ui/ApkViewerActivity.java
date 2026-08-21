@@ -86,9 +86,7 @@ public class ApkViewerActivity extends AppCompatActivity {
         adapter = new FileListAdapter(this, new FileListAdapter.OnItemClickListener() {
             @Override
             public void onItemClicked(Object item) {
-                if (item instanceof ApkInspector.EntryInfo) {
-                    handleEntryClick((ApkInspector.EntryInfo) item);
-                }
+                handleEntryClick(item);
             }
             @Override
             public boolean onItemLongClicked(Object item) {
@@ -125,7 +123,11 @@ public class ApkViewerActivity extends AppCompatActivity {
 
     private void refresh() {
         java.util.List<ApkInspector.EntryInfo> items = inspector.listInDirectory(currentDir);
-        adapter.setItems(items);
+        // Prepend ".." parent marker if we have a place to go back to
+        java.util.List<Object> display = new java.util.ArrayList<>();
+        if (!history.isEmpty()) display.add(com.dt.manager.adapter.FileListAdapter.PARENT_MARKER);
+        display.addAll(items);
+        adapter.setItems(display);
         String displayPath;
         if (currentDir.isEmpty()) displayPath = apkFile.getName() + "/";
         else displayPath = apkFile.getName() + "/" + currentDir + "/";
@@ -141,7 +143,14 @@ public class ApkViewerActivity extends AppCompatActivity {
         emptyView.setVisibility(items.isEmpty() ? View.VISIBLE : View.GONE);
     }
 
-    private void handleEntryClick(ApkInspector.EntryInfo e) {
+    private void handleEntryClick(Object item) {
+        if (item == com.dt.manager.adapter.FileListAdapter.PARENT_MARKER) {
+            onBackPressed();
+            return;
+        }
+        if (!(item instanceof ApkInspector.EntryInfo)) return;
+        ApkInspector.EntryInfo e = (ApkInspector.EntryInfo) item;
+
         if (e.isDirectory()) {
             history.push(currentDir);
             currentDir = e.getPath();
@@ -150,7 +159,7 @@ public class ApkViewerActivity extends AppCompatActivity {
         }
         String name = e.getName().toLowerCase();
         if (name.endsWith(".dex")) {
-            openDexViewer(e.getPath());
+            showDexOptions(e);
         } else if (name.endsWith(".apk")) {
             // Nested APK — open it in a new ApkViewerActivity
             try {
@@ -167,6 +176,33 @@ public class ApkViewerActivity extends AppCompatActivity {
         } else {
             Toast.makeText(this, R.string.error_no_handler, Toast.LENGTH_SHORT).show();
         }
+    }
+
+    /** Show options when tapping a .dex: open in Dex Editor, browse APK contents, or properties. */
+    private void showDexOptions(ApkInspector.EntryInfo e) {
+        new AlertDialog.Builder(this)
+                .setTitle(e.getName())
+                .setItems(new CharSequence[]{
+                        getString(R.string.action_open_dex_editor),
+                        getString(R.string.action_browse_apk),
+                        getString(R.string.action_properties)
+                }, (d, which) -> {
+                    switch (which) {
+                        case 0:
+                            openDexViewer(e.getPath());
+                            break;
+                        case 1:
+                            // Navigate back to the APK root
+                            currentDir = "";
+                            history.clear();
+                            refresh();
+                            break;
+                        case 2:
+                            showEntryProperties(e);
+                            break;
+                    }
+                })
+                .show();
     }
 
     private boolean isTextEntry(String lowerName) {

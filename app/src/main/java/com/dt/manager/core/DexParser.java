@@ -303,12 +303,15 @@ public class DexParser implements Closeable {
         if (fullClassName == null || fullClassName.isEmpty()) return;
         String[] parts = fullClassName.split("\\.");
         Node cur = root;
+        StringBuilder path = new StringBuilder();
         for (int i = 0; i < parts.length; i++) {
             String part = parts[i];
             boolean isPackage = i < parts.length - 1;
+            if (path.length() > 0) path.append(".");
+            path.append(part);
             Node child = cur.findChild(part);
             if (child == null) {
-                child = new Node(part, part, isPackage, cur.depth + 1);
+                child = new Node(part, path.toString(), isPackage, cur.depth + 1);
                 cur.children.add(child);
             }
             cur = child;

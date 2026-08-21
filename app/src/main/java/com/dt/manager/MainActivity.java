@@ -25,6 +25,7 @@ import androidx.core.content.ContextCompat;
 
 import com.dt.manager.adapter.FileListAdapter;
 import com.dt.manager.core.ApkInstaller;
+import com.dt.manager.core.FileClipboard;
 import com.dt.manager.core.FilePaneController;
 import com.dt.manager.ui.AboutActivity;
 import com.dt.manager.ui.ApkInfoDialog;
@@ -65,7 +66,6 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
 
-    /** Text extensions we open in the in-app editor. */
     private static final Set<String> TEXT_EXT = new HashSet<>(Arrays.asList(
             "txt", "ts", "js", "json", "xml", "smali", "properties", "md",
             "yml", "yaml", "ini", "cfg", "csv", "log", "html", "css", "java", "kt"
@@ -88,6 +88,10 @@ public class MainActivity extends AppCompatActivity {
         FileListAdapter.OnItemClickListener listener = new FileListAdapter.OnItemClickListener() {
             @Override
             public void onItemClicked(Object item) {
+                if (item == FileListAdapter.PARENT_MARKER) {
+                    if (activePane != null && activePane.goBack()) updateHeaderForActivePane();
+                    return;
+                }
                 if (item instanceof File) handleFileClick((File) item);
             }
             @Override
@@ -100,7 +104,12 @@ public class MainActivity extends AppCompatActivity {
             }
         };
 
-        FilePaneController.OnPaneNavigateListener navListener = pane -> setActivePane(pane);
+        FilePaneController.OnPaneNavigateListener navListener = new FilePaneController.OnPaneNavigateListener() {
+            @Override public void onPaneActivated(FilePaneController pane) { setActivePane(pane); }
+            @Override public void onPaneContentChanged(FilePaneController pane) {
+                if (pane == activePane) updateHeaderForActivePane();
+            }
+        };
 
         View leftRoot = findViewById(R.id.paneLeft);
         View rightRoot = findViewById(R.id.paneRight);
@@ -127,28 +136,28 @@ public class MainActivity extends AppCompatActivity {
 
     private void setActivePane(FilePaneController pane) {
         activePane = pane;
-        // Highlight active pane subtly
         paneLeftWrap.setBackgroundColor(
                 ContextCompat.getColor(this, pane == leftPane ? R.color.bg_tertiary : R.color.bg_primary));
         paneRightWrap.setBackgroundColor(
                 ContextCompat.getColor(this, pane == rightPane ? R.color.bg_tertiary : R.color.bg_primary));
+        updateHeaderForActivePane();
+    }
 
-        // Sync top header
-        if (pane != null && pane.getCurrentDir() != null) {
-            File cur = pane.getCurrentDir();
-            pathText.setText(cur.getAbsolutePath() + "/");
-            int folders = FileUtils.countFolders(cur);
-            int files = FileUtils.countFiles(cur);
-            String disk = FileUtils.diskSummary(cur);
-            if (disk.isEmpty()) {
-                summaryText.setText(getString(R.string.format_summary, folders, files));
+    private void updateHeaderForActivePane() {
+        if (activePane == null || activePane.getCurrentDir() == null) return;
+        File cur = activePane.getCurrentDir();
+        pathText.setText(cur.getAbsolutePath() + "/");
+        int folders = FileUtils.countFolders(cur);
+        int files = FileUtils.countFiles(cur);
+        String disk = FileUtils.diskSummary(cur);
+        if (disk.isEmpty()) {
+            summaryText.setText(getString(R.string.format_summary, folders, files));
+        } else {
+            String[] parts = disk.split("/");
+            if (parts.length == 2) {
+                summaryText.setText(getString(R.string.format_summary_disk, folders, files, parts[0], parts[1]));
             } else {
-                String[] parts = disk.split("/");
-                if (parts.length == 2) {
-                    summaryText.setText(getString(R.string.format_summary_disk, folders, files, parts[0], parts[1]));
-                } else {
-                    summaryText.setText(getString(R.string.format_summary, folders, files));
-                }
+                summaryText.setText(getString(R.string.format_summary, folders, files));
             }
         }
     }
@@ -157,6 +166,15 @@ public class MainActivity extends AppCompatActivity {
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.menu_main, menu);
         return true;
+    }
+
+    @Override
+    public boolean onPrepareOptionsMenu(Menu menu) {
+        MenuItem pasteItem = menu.findItem(R.id.action_paste);
+        if (pasteItem != null) {
+            pasteItem.setVisible(!FileClipboard.getInstance().isEmpty());
+        }
+        return super.onPrepareOptionsMenu(menu);
     }
 
     @Override
@@ -170,6 +188,9 @@ public class MainActivity extends AppCompatActivity {
             return true;
         } else if (id == R.id.action_search) {
             showSearchDialog();
+            return true;
+        } else if (id == R.id.action_paste) {
+            pasteIntoActivePane();
             return true;
         }
         return super.onOptionsItemSelected(item);
@@ -185,9 +206,7 @@ public class MainActivity extends AppCompatActivity {
                 .setPositiveButton(android.R.string.search_go, (d, w) -> {
                     String q = et.getText().toString().trim();
                     activePane.setQuery(q.toLowerCase());
-                    if (activePane == leftPane || activePane == rightPane) {
-                        setActivePane(activePane);
-                    }
+                    updateHeaderForActivePane();
                 })
                 .setNegativeButton(android.R.string.cancel, null)
                 .show();
@@ -233,7 +252,7 @@ public class MainActivity extends AppCompatActivity {
         if (activePane == null) setActivePane(leftPane);
         if (f.isDirectory()) {
             activePane.navigateTo(f);
-            setActivePane(activePane);
+            updateHeaderForActivePane();
         } else {
             String name = f.getName().toLowerCase();
             if (name.endsWith(".apk") || name.endsWith(".xapk") || name.endsWith(".apkm")) {
@@ -283,9 +302,7 @@ public class MainActivity extends AppCompatActivity {
     private void showFunctionsMenu(File apkFile) {
         new AlertDialog.Builder(this)
                 .setTitle(apkFile.getName())
-                .setItems(new CharSequence[]{
-                        "Install", "View inside", "Properties"
-                }, (d, which) -> {
+                .setItems(new CharSequence[]{"Install", "View inside", "Properties"}, (d, which) -> {
                     switch (which) {
                         case 0:
                             new ApkInstaller(this, new ApkInstaller.Callback() {
@@ -311,25 +328,38 @@ public class MainActivity extends AppCompatActivity {
         java.util.List<String> labels = new java.util.ArrayList<>();
         java.util.List<Runnable> actions = new java.util.ArrayList<>();
 
+        // Clipboard actions: available for any file or folder
+        labels.add(getString(R.string.action_copy));
+        actions.add(() -> {
+            FileClipboard.getInstance().set(f, FileClipboard.Action.COPY);
+            Toast.makeText(this, "Copied: " + f.getName(), Toast.LENGTH_SHORT).show();
+            invalidateOptionsMenu();
+        });
+        labels.add(getString(R.string.action_cut));
+        actions.add(() -> {
+            FileClipboard.getInstance().set(f, FileClipboard.Action.CUT);
+            Toast.makeText(this, "Cut: " + f.getName(), Toast.LENGTH_SHORT).show();
+            invalidateOptionsMenu();
+        });
+
         if (f.isDirectory()) {
-            // Folders: just Properties. "View inside" is redundant (tapping already does it).
-            labels.add("Properties");
+            labels.add(getString(R.string.action_properties));
             actions.add(() -> showProperties(f));
         } else {
             String name = f.getName().toLowerCase();
             if (name.endsWith(".apk") || name.endsWith(".xapk") || name.endsWith(".apkm")) {
-                labels.add("Details");
+                labels.add(getString(R.string.action_details));
                 actions.add(() -> showApkInfoDialog(f));
-                labels.add("Install");
+                labels.add(getString(R.string.action_install));
                 actions.add(() -> new ApkInstaller(this, new ApkInstaller.Callback() {
                     @Override public void onSuccess(String m) { Toast.makeText(MainActivity.this, m, Toast.LENGTH_SHORT).show(); }
                     @Override public void onError(String m) { Toast.makeText(MainActivity.this, getString(R.string.install_fail, m), Toast.LENGTH_LONG).show(); }
                 }).install(f));
             } else if (isTextFile(name)) {
-                labels.add("Edit");
+                labels.add(getString(R.string.action_save).equals("Save") ? "Edit" : "Edit");
                 actions.add(() -> openTextEditor(f));
             }
-            labels.add("Properties");
+            labels.add(getString(R.string.action_properties));
             actions.add(() -> showProperties(f));
         }
 
@@ -340,6 +370,44 @@ public class MainActivity extends AppCompatActivity {
                     if (which >= 0 && which < actions.size()) actions.get(which).run();
                 })
                 .show();
+    }
+
+    private void pasteIntoActivePane() {
+        FileClipboard clip = FileClipboard.getInstance();
+        if (clip.isEmpty()) {
+            Toast.makeText(this, R.string.clipboard_empty, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (activePane == null || activePane.getCurrentDir() == null) return;
+        File src = clip.getSource();
+        File destDir = activePane.getCurrentDir();
+
+        // Refuse to paste a folder into itself or its descendant
+        if (src.isDirectory() && destDir.getAbsolutePath().startsWith(src.getAbsolutePath())) {
+            Toast.makeText(this, getString(R.string.paste_fail, "cannot paste folder into itself"), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        final File source = src;
+        final File targetDir = destDir;
+        final boolean isCut = clip.getAction() == FileClipboard.Action.CUT;
+
+        new Thread(() -> {
+            try {
+                File result = FileUtils.copy(source, targetDir);
+                if (isCut && !source.getAbsolutePath().equals(result.getAbsolutePath())) {
+                    FileUtils.deleteRecursive(source);
+                }
+                runOnUiThread(() -> {
+                    if (isCut) clip.clear();
+                    Toast.makeText(this, getString(R.string.paste_done, result.getName()), Toast.LENGTH_SHORT).show();
+                    activePane.refresh();
+                    invalidateOptionsMenu();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, getString(R.string.paste_fail, e.getMessage()), Toast.LENGTH_LONG).show());
+            }
+        }).start();
     }
 
     private void showProperties(File f) {
@@ -354,7 +422,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onBackPressed() {
         if (activePane != null && activePane.goBack()) {
-            setActivePane(activePane);
+            updateHeaderForActivePane();
             return;
         }
         super.onBackPressed();
