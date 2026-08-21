@@ -25,26 +25,25 @@
         android:textColor="@color/text_tertiary"
         android:textSize="11sp" />
 
-    <ScrollView
+    <HorizontalScrollView
+        android:id="@+id/editorScroll"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:fillViewport="true">
+        android:fillViewport="true"
+        android:scrollbars="horizontal">
 
-        <EditText
+        <com.dt.manager.widget.CodeEditorView
             android:id="@+id/editor"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
             android:background="@android:color/transparent"
             android:inputType="textMultiLine|textNoSuggestions"
             android:gravity="top|start"
-            android:fontFamily="monospace"
-            android:padding="16dp"
-            android:textColor="@color/text_primary"
-            android:textColorHint="@color/text_tertiary"
-            android:textSize="13sp"
+            android:padding="0dp"
             android:scrollbars="vertical"
             android:isScrollContainer="true" />
-    </ScrollView>
+
+    </HorizontalScrollView>
 
 </LinearLayout>

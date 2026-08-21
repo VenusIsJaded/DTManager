@@ -5,15 +5,18 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.dt.manager.R;
+import com.dt.manager.core.BinaryXmlDecoder;
+import com.dt.manager.core.SyntaxHighlighter;
 import com.dt.manager.util.FileUtils;
+import com.dt.manager.widget.CodeEditorView;
 import com.google.android.material.appbar.MaterialToolbar;
 
 import java.io.ByteArrayOutputStream;
@@ -33,8 +36,14 @@ import java.nio.charset.StandardCharsets;
  *      to cache on open. On save, written back to the cache copy and the
  *      user is told the APK itself was not modified.
  *
- * Supported extensions: .txt, .ts, .js, .json, .xml, .smali, .properties,
- * .md, .cfg, .ini, .yml, .yaml, .csv, .log, .html, .css, .java, .kt.
+ * Binary XML (AndroidManifest.xml, *.xml resources inside an APK) is
+ * detected via magic bytes and decoded to text XML before display.
+ *
+ * The editor uses CodeEditorView which provides:
+ *   - Line-number gutter on the left (synchronized with vertical scroll)
+ *   - Monospace font + comfortable line height
+ *   - Syntax highlighting (XML/JSON/Smali/Java) with the MT Manager palette
+ *   - Horizontal scroll for long lines
  */
 public class TextEditorActivity extends AppCompatActivity {
 
@@ -43,12 +52,13 @@ public class TextEditorActivity extends AppCompatActivity {
     public static final String EXTRA_ENTRY_PATH = "entry_path";
 
     private MaterialToolbar toolbar;
-    private EditText editor;
+    private CodeEditorView editor;
     private TextView status;
 
     private File workingFile;
     private boolean dirty = false;
     private boolean fromApk = false;
+    private boolean wasBinaryXml = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -93,7 +103,9 @@ public class TextEditorActivity extends AppCompatActivity {
 
     private void loadFromDisk() {
         try (FileInputStream in = new FileInputStream(workingFile)) {
-            String text = readText(in);
+            byte[] raw = readAllBytes(in);
+            String text = decodeBytes(raw);
+            editor.setLanguage(SyntaxHighlighter.detectLanguage(workingFile.getName()));
             editor.setText(text);
             dirty = false;
             updateStatus();
@@ -108,14 +120,18 @@ public class TextEditorActivity extends AppCompatActivity {
         try (com.dt.manager.core.ApkInspector inspector =
                      new com.dt.manager.core.ApkInspector(new File(apkPath))) {
             InputStream in = inspector.openStream(entryPath);
-            String text = readText(in);
+            byte[] raw = readAllBytes(in);
             in.close();
+            String text = decodeBytes(raw);
+
             // Stage to cache so we can "save" (to cache — APK repackage not supported yet)
             File staged = new File(getCacheDir(), new File(entryPath).getName());
             try (FileOutputStream out = new FileOutputStream(staged)) {
                 out.write(text.getBytes(StandardCharsets.UTF_8));
             }
             workingFile = staged;
+
+            editor.setLanguage(SyntaxHighlighter.detectLanguage(new File(entryPath).getName()));
             editor.setText(text);
             dirty = false;
             updateStatus();
@@ -125,18 +141,27 @@ public class TextEditorActivity extends AppCompatActivity {
         }
     }
 
-    private String readText(InputStream in) throws IOException {
+    /** Detect binary XML and decode it; otherwise treat as UTF-8 text. */
+    private String decodeBytes(byte[] raw) {
+        if (BinaryXmlDecoder.isBinaryXml(raw)) {
+            wasBinaryXml = true;
+            String decoded = BinaryXmlDecoder.decode(raw);
+            return decoded != null ? decoded : "";
+        }
+        // Strip BOM if present
+        if (raw.length >= 3 && (raw[0] & 0xFF) == 0xEF
+                && (raw[1] & 0xFF) == 0xBB && (raw[2] & 0xFF) == 0xBF) {
+            return new String(raw, 3, raw.length - 3, StandardCharsets.UTF_8);
+        }
+        return new String(raw, StandardCharsets.UTF_8);
+    }
+
+    private byte[] readAllBytes(InputStream in) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buf = new byte[8192];
         int n;
         while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
-        byte[] data = out.toByteArray();
-        // Strip BOM if present
-        if (data.length >= 3 && (data[0] & 0xFF) == 0xEF
-                && (data[1] & 0xFF) == 0xBB && (data[2] & 0xFF) == 0xBF) {
-            return new String(data, 3, data.length - 3, StandardCharsets.UTF_8);
-        }
-        return new String(data, StandardCharsets.UTF_8);
+        return out.toByteArray();
     }
 
     private void save() {
@@ -158,11 +183,16 @@ public class TextEditorActivity extends AppCompatActivity {
     private void updateStatus() {
         if (status == null) return;
         StringBuilder sb = new StringBuilder();
-        if (fromApk) sb.append("Cached copy — saving writes to cache, not the APK");
-        else if (dirty) sb.append("Unsaved changes");
-        else sb.append("Saved");
-        if (fromApk && dirty) {
-            sb = new StringBuilder("Cached copy — Unsaved changes");
+        if (wasBinaryXml) {
+            sb.append("Decoded from binary XML — saved as text");
+        } else if (fromApk) {
+            sb.append("Cached copy — saving writes to cache, not the APK");
+        }
+        if (dirty) {
+            if (sb.length() > 0) sb.append(" — ");
+            sb.append("Unsaved changes");
+        } else if (sb.length() == 0) {
+            sb.append("Saved");
         }
         status.setText(sb.toString());
     }
@@ -178,7 +208,7 @@ public class TextEditorActivity extends AppCompatActivity {
         int id = item.getItemId();
         if (id == android.R.id.home) {
             if (dirty) {
-                new androidx.appcompat.app.AlertDialog.Builder(this)
+                new AlertDialog.Builder(this)
                         .setTitle("Discard changes?")
                         .setPositiveButton("Discard", (d, w) -> finish())
                         .setNegativeButton("Cancel", null)
@@ -197,7 +227,7 @@ public class TextEditorActivity extends AppCompatActivity {
     @Override
     public void onBackPressed() {
         if (dirty) {
-            new androidx.appcompat.app.AlertDialog.Builder(this)
+            new AlertDialog.Builder(this)
                     .setTitle("Discard changes?")
                     .setPositiveButton("Discard", (d, w) -> super.onBackPressed())
                     .setNegativeButton("Cancel", null)
