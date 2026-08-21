@@ -531,7 +531,7 @@ public class DexParser implements Closeable {
             this.depth = depth;
         }
 
-        Node findChild(String n) {
+        public Node findChild(String n) {
             for (Node c : children) {
                 if (c.name.equals(n)) return c;
             }
@@ -540,7 +540,7 @@ public class DexParser implements Closeable {
 
         public boolean hasChildren() { return !children.isEmpty(); }
 
-        void sortChildren() {
+        public void sortChildren() {
             Collections.sort(children, Comparator
                     .comparingInt((Node n) -> n.isPackage ? 0 : 1)
                     .thenComparing(n -> n.name.toLowerCase()));
