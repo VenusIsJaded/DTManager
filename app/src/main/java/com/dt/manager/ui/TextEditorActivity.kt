@@ -1,8 +1,6 @@
 package com.dt.manager.ui
 
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Menu
@@ -38,7 +36,6 @@ class TextEditorActivity : AppCompatActivity() {
         const val EXTRA_FILE_PATH = "file_path"
         const val EXTRA_APK_PATH = "apk_path"
         const val EXTRA_ENTRY_PATH = "entry_path"
-        private const val AUTO_SAVE_DELAY_MS = 500L
     }
 
     private lateinit var toolbar: MaterialToolbar
@@ -53,9 +50,6 @@ class TextEditorActivity : AppCompatActivity() {
     private var wasTextXml = false
     private var originalBinaryXml: ByteArray? = null
     private var originalDecodedText: String? = null
-
-    private val autoSaveHandler = Handler(Looper.getMainLooper())
-    private val autoSaveRunnable = Runnable { autoSave() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,8 +89,6 @@ class TextEditorActivity : AppCompatActivity() {
                 dirty = true
                 wasModified = true
                 updateStatus()
-                autoSaveHandler.removeCallbacks(autoSaveRunnable)
-                autoSaveHandler.postDelayed(autoSaveRunnable, AUTO_SAVE_DELAY_MS)
             }
             override fun afterTextChanged(s: Editable?) {}
         })
@@ -199,24 +191,11 @@ class TextEditorActivity : AppCompatActivity() {
         return out.toByteArray()
     }
 
-    private fun autoSave() {
-        val f = workingFile ?: return
-        if (!dirty) return
-        try {
-            FileOutputStream(f).use { out ->
-                out.write(editor.text.toString().toByteArray(StandardCharsets.UTF_8))
-                dirty = false
-                updateStatus()
-            }
-        } catch (_: IOException) {}
-    }
-
     private fun save() {
         val f = workingFile ?: run {
             Toast.makeText(this, "Nothing to save", Toast.LENGTH_SHORT).show()
             return
         }
-        autoSaveHandler.removeCallbacks(autoSaveRunnable)
         try {
             FileOutputStream(f).use { out ->
                 out.write(editor.text.toString().toByteArray(StandardCharsets.UTF_8))
@@ -242,7 +221,7 @@ class TextEditorActivity : AppCompatActivity() {
                 sb.append("Unsaved changes")
             }
             sb.isEmpty() -> sb.append("Saved")
-            else -> sb.append(" — auto-saved")
+            else -> sb.append(" — Saved")
         }
         status.text = sb.toString()
     }
@@ -266,12 +245,71 @@ class TextEditorActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Handles the back / up-navigation flow.
+     *
+     * Three cases:
+     *
+     * 1. There are unsaved changes (`dirty`):
+     *    Show a "Save changes?" dialog. The user can:
+     *      - Save   → write to disk, then continue to case 2 (APK auto-sign prompt)
+     *                or just finish (external file)
+     *      - Discard → drop all edits. For APK entries this also deletes the
+     *                staged cache file so the next open is fresh. Then finish.
+     *      - Cancel → do nothing; stay in the editor.
+     *
+     * 2. No unsaved changes, but the user has modified an APK entry at some point
+     *    (`wasModified && fromApk`): ask whether to repack + re-sign the APK.
+     *
+     * 3. Otherwise: just leave.
+     */
     override fun onBackPressed() {
-        autoSaveHandler.removeCallbacks(autoSaveRunnable)
-        if (dirty) autoSave()
+        when {
+            dirty -> promptSaveOnLeave()
+            wasModified && fromApk -> promptAutoSign()
+            else -> super.onBackPressed()
+        }
+    }
 
-        if (wasModified && fromApk) {
-            promptAutoSign()
+    private fun promptSaveOnLeave() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.save_prompt_title)
+            .setMessage(R.string.save_prompt_message)
+            .setPositiveButton(R.string.save_prompt_save) { _, _ ->
+                save()
+                if (wasModified && fromApk) {
+                    promptAutoSign()
+                } else {
+                    super.onBackPressed()
+                }
+            }
+            .setNegativeButton(R.string.save_prompt_discard) { _, _ ->
+                discardAndLeave()
+            }
+            .setNeutralButton(R.string.save_prompt_cancel, null)
+            .show()
+    }
+
+    /**
+     * Drop unsaved edits and leave the editor.
+     *
+     * For APK entries, this also deletes the staged cache file + binary XML
+     * cache so that the next open starts fresh from the APK. Without this,
+     * the user would see their discarded edits again next time.
+     */
+    private fun discardAndLeave() {
+        dirty = false
+        wasModified = false
+        if (fromApk) {
+            workingFile?.delete()
+            val apkPath = intent.getStringExtra(EXTRA_APK_PATH)
+            val entryPath = intent.getStringExtra(EXTRA_ENTRY_PATH)
+            if (apkPath != null && entryPath != null) {
+                val key = Integer.toHexString((apkPath + "#" + entryPath).hashCode())
+                val cacheDir = File(cacheDir, "apk_edits")
+                File(cacheDir, key + "_" + File(entryPath).name + ".bin").delete()
+            }
+            finish()
         } else {
             super.onBackPressed()
         }
