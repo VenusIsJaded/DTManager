@@ -223,15 +223,16 @@ public class ApkViewerActivity extends AppCompatActivity {
         // android.app). Single-choice avoids the crash entirely.
         int tappedIdx = allDexFiles.indexOf(e.getPath());
         if (tappedIdx < 0) tappedIdx = 0;
+        final int tappedIdxFinal = tappedIdx;
 
         CharSequence[] items = allDexFiles.toArray(new CharSequence[0]);
-        final int[] selected = { tappedIdx };
+        final int[] selected = { tappedIdxFinal };
         new AlertDialog.Builder(this)
                 .setTitle("MultiDex")
-                .setSingleChoiceItems(items, tappedIdx, (d, which) -> selected[0] = which)
+                .setSingleChoiceItems(items, tappedIdxFinal, (d, which) -> selected[0] = which)
                 .setPositiveButton("OK", (d, which) -> {
                     int sel = selected[0];
-                    if (sel < 0 || sel >= allDexFiles.size()) sel = tappedIdx;
+                    if (sel < 0 || sel >= allDexFiles.size()) sel = tappedIdxFinal;
                     openDexViewer(allDexFiles.get(sel), allDexFiles);
                 })
                 .setNegativeButton("CANCEL", null)
