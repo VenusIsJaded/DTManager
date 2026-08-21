@@ -160,16 +160,16 @@ public class SyntaxHighlighter {
     private static final Pattern MD_HR = Pattern.compile("(?m)^---+$");
 
     private static void highlightMarkdown(SpannableStringBuilder sb) {
-        // Order matters: apply more specific patterns first
-        applySpan(sb, MD_CODE_BLOCK, new ForegroundColorSpan(COLOR_STRING),
-                new StyleSpan(android.graphics.Typeface.MONOSPACE));
+        // Order matters: apply more specific patterns first.
+        // StyleSpan takes int constants (Typeface.BOLD, .ITALIC, .BOLD_ITALIC),
+        // NOT Typeface objects. MONOSPACE is a Typeface constant, not a style.
+        applySpan(sb, MD_CODE_BLOCK, new ForegroundColorSpan(COLOR_STRING));
         applySpan(sb, MD_HEADER, new ForegroundColorSpan(COLOR_TAG),
                 new StyleSpan(android.graphics.Typeface.BOLD));
         applySpan(sb, MD_HR, new ForegroundColorSpan(COLOR_COMMENT));
         applySpan(sb, MD_QUOTE, new ForegroundColorSpan(COLOR_COMMENT),
                 new StyleSpan(android.graphics.Typeface.ITALIC));
-        applySpan(sb, MD_INLINE_CODE, new ForegroundColorSpan(COLOR_STRING),
-                new StyleSpan(android.graphics.Typeface.MONOSPACE));
+        applySpan(sb, MD_INLINE_CODE, new ForegroundColorSpan(COLOR_STRING));
         applySpan(sb, MD_LINK, new ForegroundColorSpan(COLOR_KEYWORD));
         applySpan(sb, MD_LIST, new ForegroundColorSpan(COLOR_ATTR));
         applySpan(sb, MD_BOLD, new ForegroundColorSpan(COLOR_ATTR),
