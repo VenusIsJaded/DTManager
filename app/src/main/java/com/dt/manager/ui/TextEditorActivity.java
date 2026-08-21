@@ -1,6 +1,9 @@
 package com.dt.manager.ui;
 
+import android.content.DialogInterface;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Menu;
@@ -13,6 +16,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.dt.manager.R;
+import com.dt.manager.core.ApkRepacker;
 import com.dt.manager.core.BinaryXmlDecoder;
 import com.dt.manager.core.SyntaxHighlighter;
 import com.dt.manager.util.FileUtils;
@@ -26,25 +30,27 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
  * Plain-text editor for any file inside (or outside) an APK.
  *
- * Sources:
- *   1. EXTRA_FILE_PATH — a real file on disk (read & overwrite in place).
- *   2. EXTRA_APK_PATH + EXTRA_ENTRY_PATH — a file inside an APK. Extracted
- *      to cache on open. On save, written back to the cache copy and the
- *      user is told the APK itself was not modified.
+ * Flow (matches MT Manager):
+ *   1. Open file from APK — extracted to cache.
+ *   2. Edit — auto-saves to cache (debounced 500ms).
+ *   3. Tap Save button — forces immediate save to cache.
+ *   4. Tap back — if any edits were made this session, prompt
+ *      "Auto-sign APK?"
+ *        Yes → repack APK (preserve compression methods, rebuild V1
+ *               signature with DT Manager debug key) and replace the
+ *               APK on disk.
+ *        No  → exit without repacking. Cache is preserved so re-opening
+ *              shows the edited content; APK on disk is unchanged.
  *
- * Binary XML (AndroidManifest.xml, *.xml resources inside an APK) is
- * detected via magic bytes and decoded to text XML before display.
- *
- * The editor uses CodeEditorView which provides:
- *   - Line-number gutter on the left (synchronized with vertical scroll)
- *   - Monospace font + comfortable line height
- *   - Syntax highlighting (XML/JSON/Smali/Java) with the MT Manager palette
- *   - Horizontal scroll for long lines
+ * Binary XML (AndroidManifest.xml, *.xml resources) is detected and
+ * decoded to text on open. Saving as text breaks the APK — a warning
+ * dialog is shown before repack.
  */
 public class TextEditorActivity extends AppCompatActivity {
 
@@ -52,14 +58,20 @@ public class TextEditorActivity extends AppCompatActivity {
     public static final String EXTRA_APK_PATH = "apk_path";
     public static final String EXTRA_ENTRY_PATH = "entry_path";
 
+    private static final long AUTO_SAVE_DELAY_MS = 500;
+
     private MaterialToolbar toolbar;
     private CodeEditorView editor;
     private TextView status;
 
     private File workingFile;
-    private boolean dirty = false;
+    private boolean dirty = false;          // changes since last save
+    private boolean wasModified = false;    // any changes made this session
     private boolean fromApk = false;
     private boolean wasBinaryXml = false;
+
+    private final Handler autoSaveHandler = new Handler(Looper.getMainLooper());
+    private final Runnable autoSaveRunnable = this::autoSave;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -96,7 +108,11 @@ public class TextEditorActivity extends AppCompatActivity {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
                 dirty = true;
+                wasModified = true;
                 updateStatus();
+                // Schedule debounced auto-save
+                autoSaveHandler.removeCallbacks(autoSaveRunnable);
+                autoSaveHandler.postDelayed(autoSaveRunnable, AUTO_SAVE_DELAY_MS);
             }
             @Override public void afterTextChanged(Editable s) {}
         });
@@ -109,6 +125,7 @@ public class TextEditorActivity extends AppCompatActivity {
             editor.setLanguage(SyntaxHighlighter.detectLanguage(workingFile.getName()));
             editor.setText(text);
             dirty = false;
+            wasModified = false;
             updateStatus();
         } catch (IOException e) {
             Toast.makeText(this, "Failed to load: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -120,7 +137,6 @@ public class TextEditorActivity extends AppCompatActivity {
         fromApk = true;
         // Cache key: hash of (apk absolute path + entry path) so each entry
         // from each APK gets its own cache file that survives across sessions.
-        // This is what makes edits persist when re-opening the entry.
         String key = Integer.toHexString((apkPath + "#" + entryPath).hashCode());
         File cacheDir = new File(getCacheDir(), "apk_edits");
         cacheDir.mkdirs();
@@ -151,6 +167,7 @@ public class TextEditorActivity extends AppCompatActivity {
             editor.setLanguage(SyntaxHighlighter.detectLanguage(new File(entryPath).getName()));
             editor.setText(text);
             dirty = false;
+            wasModified = false;
             updateStatus();
         } catch (IOException e) {
             Toast.makeText(this, "Failed to load cached copy: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -165,7 +182,6 @@ public class TextEditorActivity extends AppCompatActivity {
             String decoded = BinaryXmlDecoder.decode(raw);
             return decoded != null ? decoded : "";
         }
-        // Strip BOM if present
         if (raw.length >= 3 && (raw[0] & 0xFF) == 0xEF
                 && (raw[1] & 0xFF) == 0xBB && (raw[2] & 0xFF) == 0xBF) {
             return new String(raw, 3, raw.length - 3, StandardCharsets.UTF_8);
@@ -181,17 +197,30 @@ public class TextEditorActivity extends AppCompatActivity {
         return out.toByteArray();
     }
 
+    /** Auto-save (called by debounced runnable). Silently writes cache file. */
+    private void autoSave() {
+        if (workingFile == null || !dirty) return;
+        try (FileOutputStream out = new FileOutputStream(workingFile)) {
+            out.write(editor.getText().toString().getBytes(StandardCharsets.UTF_8));
+            dirty = false;
+            updateStatus();
+        } catch (IOException ignored) {
+            // will retry on next change
+        }
+    }
+
+    /** Explicit save (called by Save button). Cancels pending auto-save. */
     private void save() {
         if (workingFile == null) {
             Toast.makeText(this, "Nothing to save", Toast.LENGTH_SHORT).show();
             return;
         }
+        autoSaveHandler.removeCallbacks(autoSaveRunnable);
         try (FileOutputStream out = new FileOutputStream(workingFile)) {
             out.write(editor.getText().toString().getBytes(StandardCharsets.UTF_8));
             dirty = false;
             updateStatus();
-            Toast.makeText(this, "Saved to " + workingFile.getAbsolutePath(),
-                    Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show();
         } catch (IOException e) {
             Toast.makeText(this, "Save failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
@@ -201,15 +230,17 @@ public class TextEditorActivity extends AppCompatActivity {
         if (status == null) return;
         StringBuilder sb = new StringBuilder();
         if (wasBinaryXml) {
-            sb.append("Decoded from binary XML — saved as text");
+            sb.append("Decoded from binary XML");
         } else if (fromApk) {
-            sb.append("Cached copy — saving writes to cache, not the APK");
+            sb.append("Cached copy");
         }
         if (dirty) {
             if (sb.length() > 0) sb.append(" — ");
             sb.append("Unsaved changes");
         } else if (sb.length() == 0) {
             sb.append("Saved");
+        } else {
+            sb.append(" — auto-saved");
         }
         status.setText(sb.toString());
     }
@@ -224,81 +255,77 @@ public class TextEditorActivity extends AppCompatActivity {
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         int id = item.getItemId();
         if (id == android.R.id.home) {
-            if (dirty) {
-                new AlertDialog.Builder(this)
-                        .setTitle("Discard changes?")
-                        .setPositiveButton("Discard", (d, w) -> finish())
-                        .setNegativeButton("Cancel", null)
-                        .show();
-                return true;
-            }
-            finish();
+            onBackPressed();
             return true;
         } else if (id == R.id.action_save) {
             save();
-            return true;
-        } else if (id == R.id.action_save_to_apk) {
-            saveToApk();
             return true;
         }
         return super.onOptionsItemSelected(item);
     }
 
-    /** Save the current edit back into the APK file on disk by repacking + re-signing. */
-    private void saveToApk() {
-        if (!fromApk) {
-            // For files on disk, just save normally
-            save();
-            return;
+    @Override
+    public void onBackPressed() {
+        // Cancel any pending auto-save and force-save now
+        autoSaveHandler.removeCallbacks(autoSaveRunnable);
+        if (dirty) autoSave();
+
+        if (wasModified && fromApk) {
+            // Prompt: auto-sign APK?
+            promptAutoSign();
+        } else {
+            super.onBackPressed();
         }
+    }
+
+    private void promptAutoSign() {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.auto_sign_title)
+                .setMessage(R.string.auto_sign_message)
+                .setPositiveButton(R.string.auto_sign_yes, (d, w) -> startRepack())
+                .setNegativeButton(R.string.auto_sign_no, (d, w) -> finish())
+                .setNeutralButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void startRepack() {
         String apkPath = getIntent().getStringExtra(EXTRA_APK_PATH);
         String entryPath = getIntent().getStringExtra(EXTRA_ENTRY_PATH);
         if (apkPath == null || entryPath == null) {
-            Toast.makeText(this, "Cannot repack — missing APK info", Toast.LENGTH_LONG).show();
+            finish();
             return;
         }
 
-        // First, save the current editor content to the cache file
-        save();
-
-        final File apkFile = new File(apkPath);
-        final Map<String, byte[]> modifiedEntries = new java.util.HashMap<>();
-        try {
-            modifiedEntries.put(entryPath, editor.getText().toString().getBytes(StandardCharsets.UTF_8));
-        } catch (Exception e) {
-            Toast.makeText(this, "Encode failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
-            return;
-        }
-
-        // Warn if the original was binary XML — saving as text may break the APK
-        Runnable doRepack = () -> runRepack(apkFile, modifiedEntries, entryPath);
+        // Warn if binary XML — saving as text will break the APK
         if (wasBinaryXml) {
             new AlertDialog.Builder(this)
                     .setTitle("Warning")
                     .setMessage(R.string.repack_warn_binary_xml)
-                    .setPositiveButton("Continue", (d, w) -> doRepack.run())
+                    .setPositiveButton("Continue", (d, w) -> doRepack(apkPath, entryPath))
                     .setNegativeButton("Cancel", null)
                     .show();
         } else {
-            doRepack.run();
+            doRepack(apkPath, entryPath);
         }
     }
 
-    private void runRepack(File apkFile, Map<String, byte[]> modifiedEntries, String entryPath) {
-        final androidx.appcompat.app.AlertDialog progress = new androidx.appcompat.app.AlertDialog.Builder(this)
+    private void doRepack(String apkPath, String entryPath) {
+        final File apkFile = new File(apkPath);
+        final Map<String, byte[]> modifiedEntries = new HashMap<>();
+        modifiedEntries.put(entryPath, editor.getText().toString().getBytes(StandardCharsets.UTF_8));
+
+        final AlertDialog progress = new AlertDialog.Builder(this)
                 .setTitle(R.string.repack_progress)
                 .setMessage("Starting...")
                 .setCancelable(false)
                 .show();
 
-        com.dt.manager.core.ApkRepacker.repack(this, apkFile, modifiedEntries,
-                new com.dt.manager.core.ApkRepacker.ProgressListener() {
+        ApkRepacker.repack(this, apkFile, modifiedEntries,
+                new ApkRepacker.ProgressListener() {
                     @Override
                     public void onProgress(String message) {
                         runOnUiThread(() -> {
-                            if (progress.isShowing()) {
-                                progress.setMessage(message);
-                            }
+                            if (progress.isShowing()) progress.setMessage(message);
                         });
                     }
 
@@ -306,20 +333,13 @@ public class TextEditorActivity extends AppCompatActivity {
                     public void onSuccess(File repackedApk) {
                         runOnUiThread(() -> {
                             progress.dismiss();
-                            // Delete the cached edit file so next open loads from the repacked APK
+                            // Delete the cached edit file — APK is now the source of truth
                             if (workingFile != null) workingFile.delete();
                             Toast.makeText(TextEditorActivity.this,
                                     R.string.repack_success, Toast.LENGTH_SHORT).show();
+                            wasModified = false;
                             dirty = false;
-                            updateStatus();
-                            // Update the apkPath intent extra to point to the new APK
-                            // (same path on disk, but ensures re-open reads fresh content)
-                            getIntent().putExtra(EXTRA_APK_PATH, repackedApk.getAbsolutePath());
-                            fromApk = true;
-                            // Reload from the repacked APK so editor reflects what's actually in the APK now
-                            // (in case the editor's view of the content was diverging)
-                            // Re-extract by clearing the cache and reopening
-                            loadFromApk(repackedApk.getAbsolutePath(), entryPath);
+                            finish();
                         });
                     }
 
@@ -333,18 +353,5 @@ public class TextEditorActivity extends AppCompatActivity {
                         });
                     }
                 });
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (dirty) {
-            new AlertDialog.Builder(this)
-                    .setTitle("Discard changes?")
-                    .setPositiveButton("Discard", (d, w) -> super.onBackPressed())
-                    .setNegativeButton("Cancel", null)
-                    .show();
-        } else {
-            super.onBackPressed();
-        }
     }
 }

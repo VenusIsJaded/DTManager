@@ -103,9 +103,20 @@ public class ApkRepacker {
                         content = readAll(zipIn.getInputStream(inEntry));
                     }
 
-                    // Write the entry
+                    // Write the entry — preserve the original compression method.
+                    // This is critical: Android requires resources.arsc and .so files
+                    // to be STORED (uncompressed) so they can be memory-mapped.
+                    // Forcing DEFLATED on them produces an invalid APK.
                     ZipEntry outEntry = new ZipEntry(name);
-                    outEntry.setMethod(ZipEntry.DEFLATED);
+                    outEntry.setMethod(inEntry.getMethod());
+                    if (inEntry.getMethod() == ZipEntry.STORED) {
+                        // STORED entries require explicit CRC, size, and compressedSize
+                        outEntry.setSize(content.length);
+                        outEntry.setCompressedSize(content.length);
+                        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                        crc.update(content);
+                        outEntry.setCrc(crc.getValue());
+                    }
                     zos.putNextEntry(outEntry);
                     zos.write(content);
                     zos.closeEntry();

@@ -119,10 +119,6 @@ public class SmaliGenerator {
         sb.append(".method ").append(m.modifierPrefix())
                 .append(" ").append(m.name)
                 .append(smaliPrototype(m.prototype)).append("\n");
-        // We don't parse the code item for .registers or locals yet, so emit
-        // a placeholder comment instead of faking it.
-        sb.append("    .registers ?\n");
-        sb.append("    # method body not decompiled\n");
         sb.append(".end method\n\n");
     }
 

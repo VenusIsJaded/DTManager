@@ -163,13 +163,13 @@ public class ApkViewerActivity extends AppCompatActivity {
         if (name.endsWith(".dex")) {
             showDexOptions(e);
         } else if (name.endsWith(".apk")) {
-            // Nested APK — open it in a new ApkViewerActivity
+            // Nested APK inside a ZIP/APK — extract to cache and show the APK info dialog
+            // (matches the MT Manager behavior: tapping a nested APK shows its details,
+            // not auto-opens the viewer).
             try {
                 File staged = FileUtils.copyToCache(this,
                         inspector.openStream(e.getPath()), e.getName());
-                Intent intent = new Intent(this, ApkViewerActivity.class);
-                intent.putExtra(EXTRA_APK_PATH, staged.getAbsolutePath());
-                startActivity(intent);
+                showNestedApkInfoDialog(staged);
             } catch (Exception ex) {
                 Toast.makeText(this, ex.getMessage(), Toast.LENGTH_LONG).show();
             }
@@ -178,6 +178,32 @@ public class ApkViewerActivity extends AppCompatActivity {
         } else {
             Toast.makeText(this, R.string.error_no_handler, Toast.LENGTH_SHORT).show();
         }
+    }
+
+    /** Show the APK info dialog for a nested APK (extracted to cache). */
+    private void showNestedApkInfoDialog(File apkFile) {
+        com.dt.manager.ui.ApkInfoDialog.show(this, apkFile, new com.dt.manager.ui.ApkInfoDialog.Listener() {
+            @Override
+            public void onView(File apkFile) {
+                Intent intent = new Intent(ApkViewerActivity.this, ApkViewerActivity.class);
+                intent.putExtra(EXTRA_APK_PATH, apkFile.getAbsolutePath());
+                startActivity(intent);
+            }
+            @Override
+            public void onInstall(File apkFile) {
+                new com.dt.manager.core.ApkInstaller(ApkViewerActivity.this, new com.dt.manager.core.ApkInstaller.Callback() {
+                    @Override public void onSuccess(String m) { Toast.makeText(ApkViewerActivity.this, m, Toast.LENGTH_SHORT).show(); }
+                    @Override public void onError(String m) { Toast.makeText(ApkViewerActivity.this, getString(R.string.install_fail, m), Toast.LENGTH_LONG).show(); }
+                }).install(apkFile);
+            }
+            @Override
+            public void onFunctions(File apkFile) {
+                String msg = "Path: " + apkFile.getAbsolutePath()
+                        + "\nSize: " + FileUtils.humanReadable(apkFile.length());
+                new AlertDialog.Builder(ApkViewerActivity.this)
+                        .setTitle(apkFile.getName()).setMessage(msg).show();
+            }
+        });
     }
 
     /** Show options when tapping a .dex: open in Dex Editor, browse APK contents, or properties. */
@@ -191,33 +217,22 @@ public class ApkViewerActivity extends AppCompatActivity {
             return;
         }
 
-        // Show MultiDex chooser — list with the tapped one selected
-        final boolean[] checked = new boolean[allDexFiles.size()];
+        // MultiDex chooser — single-choice (radio) items. Previously we used
+        // multi-choice with manual unchecking, which caused a ClassCastException
+        // when more than one item was tapped (the dialog was androidx, not
+        // android.app). Single-choice avoids the crash entirely.
         int tappedIdx = allDexFiles.indexOf(e.getPath());
-        if (tappedIdx >= 0) checked[tappedIdx] = true;
+        if (tappedIdx < 0) tappedIdx = 0;
 
         CharSequence[] items = allDexFiles.toArray(new CharSequence[0]);
+        final int[] selected = { tappedIdx };
         new AlertDialog.Builder(this)
                 .setTitle("MultiDex")
-                .setMultiChoiceItems(items, checked, (d, which, isChecked) -> {
-                    if (isChecked) {
-                        // uncheck all others (single-select behavior)
-                        for (int i = 0; i < checked.length; i++) {
-                            if (i != which) {
-                                checked[i] = false;
-                                ((android.app.AlertDialog) d).getListView().setItemChecked(i, false);
-                            }
-                        }
-                        checked[which] = true;
-                    }
-                })
+                .setSingleChoiceItems(items, tappedIdx, (d, which) -> selected[0] = which)
                 .setPositiveButton("OK", (d, which) -> {
-                    int selected = -1;
-                    for (int i = 0; i < checked.length; i++) {
-                        if (checked[i]) { selected = i; break; }
-                    }
-                    if (selected < 0) selected = tappedIdx >= 0 ? tappedIdx : 0;
-                    openDexViewer(allDexFiles.get(selected), allDexFiles);
+                    int sel = selected[0];
+                    if (sel < 0 || sel >= allDexFiles.size()) sel = tappedIdx;
+                    openDexViewer(allDexFiles.get(sel), allDexFiles);
                 })
                 .setNegativeButton("CANCEL", null)
                 .show();
