@@ -137,20 +137,21 @@ public class TextEditorActivity extends AppCompatActivity {
 
     private void loadFromApk(String apkPath, String entryPath) {
         fromApk = true;
-        // Cache key: hash of (apk absolute path + entry path) so each entry
-        // from each APK gets its own cache file that survives across sessions.
         String key = Integer.toHexString((apkPath + "#" + entryPath).hashCode());
         File cacheDir = new File(getCacheDir(), "apk_edits");
         cacheDir.mkdirs();
         File staged = new File(cacheDir, key + "_" + new File(entryPath).getName());
+        File binaryCache = new File(cacheDir, key + "_" + new File(entryPath).getName() + ".bin");
 
         if (!staged.exists()) {
-            // First time opening — extract from APK
             try (com.dt.manager.core.ApkInspector inspector =
-                         new com.dt.manager.core.ApkInspector(new File(apkPath))) {
+                     new com.dt.manager.core.ApkInspector(new File(apkPath))) {
                 InputStream in = inspector.openStream(entryPath);
                 byte[] raw = readAllBytes(in);
                 in.close();
+                try (FileOutputStream binOut = new FileOutputStream(binaryCache)) {
+                    binOut.write(raw);
+                }
                 String text = decodeBytes(raw);
                 try (FileOutputStream out = new FileOutputStream(staged)) {
                     out.write(text.getBytes(StandardCharsets.UTF_8));
@@ -159,6 +160,13 @@ public class TextEditorActivity extends AppCompatActivity {
                 Toast.makeText(this, "Failed to open entry: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 finish();
                 return;
+            }
+        } else if (binaryCache.exists()) {
+            try (FileInputStream binIn = new FileInputStream(binaryCache)) {
+                byte[] raw = readAllBytes(binIn);
+                decodeBytes(raw);
+            } catch (IOException e) {
+                // Binary cache read failed
             }
         }
 
@@ -348,7 +356,13 @@ public class TextEditorActivity extends AppCompatActivity {
                     public void onSuccess(File repackedApk) {
                         runOnUiThread(() -> {
                             progress.dismiss();
+                            // Delete both cache files so next open re-extracts from the repacked APK
                             if (workingFile != null) workingFile.delete();
+                            // Also delete the binary cache
+                            String key = Integer.toHexString((apkPath + "#" + entryPath).hashCode());
+                            File cacheDir = new File(getCacheDir(), "apk_edits");
+                            File binaryCache = new File(cacheDir, key + "_" + new File(entryPath).getName() + ".bin");
+                            if (binaryCache.exists()) binaryCache.delete();
                             Toast.makeText(TextEditorActivity.this,
                                     R.string.repack_success, Toast.LENGTH_SHORT).show();
                             wasModified = false;
