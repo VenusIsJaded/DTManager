@@ -29,7 +29,11 @@
     <string name="auto_sign_message">Save changes to the APK file? It will be re-signed with DT Manager\'s debug key.</string>
     <string name="auto_sign_yes">Auto-sign</string>
     <string name="auto_sign_no">Don\'t sign</string>
-    <string name="auto_saved">Auto-saved</string>
+    <string name="save_prompt_title">Save changes?</string>
+    <string name="save_prompt_message">You have unsaved changes. Save before leaving?</string>
+    <string name="save_prompt_save">Save</string>
+    <string name="save_prompt_discard">Discard</string>
+    <string name="save_prompt_cancel">Cancel</string>
     <string name="action_details">Details</string>
     <string name="action_view_inside">View inside</string>
     <string name="action_copy">Copy</string>
