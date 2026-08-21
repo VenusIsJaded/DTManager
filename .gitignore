@@ -8,3 +8,9 @@
 .externalNativeBuild
 .cxx
 local.properties
+---
+work/jdk/
+android-sdk/
+platform.zip
+work/testapk/
+work/jartest/

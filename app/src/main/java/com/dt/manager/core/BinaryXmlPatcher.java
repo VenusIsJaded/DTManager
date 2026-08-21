@@ -223,13 +223,19 @@ public final class BinaryXmlPatcher {
         int stringsStart = headerSize + offsetsSize;
         int chunkSize = stringsStart + stringsDataSize;
 
+        // CRITICAL: Binary XML chunks must be 4-byte aligned.
+        // Without alignment, aapt2 fails with "XML size not on an integer boundary."
+        if (chunkSize % 4 != 0) {
+            chunkSize += (4 - (chunkSize % 4));
+        }
+
         // Build buffer
         ByteBuffer buf = ByteBuffer.allocate(chunkSize).order(ByteOrder.LITTLE_ENDIAN);
 
         // Header
         buf.putShort((short) 0x0001); // type = STRING_POOL
         buf.putShort((short) headerSize); // header size
-        buf.putInt(chunkSize); // chunk size
+        buf.putInt(chunkSize); // chunk size (padded to 4-byte boundary)
         buf.putInt(strings.size()); // string count
         buf.putInt(0); // style count
         buf.putInt(utf8 ? 0x100 : 0); // flags
