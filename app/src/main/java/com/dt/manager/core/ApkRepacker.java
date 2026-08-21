@@ -116,6 +116,22 @@ public class ApkRepacker {
                         java.util.zip.CRC32 crc = new java.util.zip.CRC32();
                         crc.update(content);
                         outEntry.setCrc(crc.getValue());
+
+                        // 4-byte alignment (zipalign): STORED entries must start
+                        // at 4-byte boundaries. We pad the local file header's
+                        // extra field to achieve this. Without alignment, the APK
+                        // may fail to install on some Android versions.
+                        //
+                        // Local file header = 30 bytes + filename length + extra length
+                        // We need: (30 + name.length() + extra.length()) % 4 == 0
+                        int nameLen = name.getBytes(StandardCharsets.UTF_8).length;
+                        int headerSize = 30 + nameLen;
+                        int pad = (4 - (headerSize % 4)) % 4;
+                        if (pad > 0) {
+                            byte[] extra = new byte[pad];
+                            // Use a zero-filled extra field for alignment padding
+                            outEntry.setExtra(extra);
+                        }
                     }
                     zos.putNextEntry(outEntry);
                     zos.write(content);

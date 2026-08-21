@@ -135,10 +135,13 @@ public class DexViewerActivity extends AppCompatActivity {
             return;
         }
 
-        // Set up the spinner with all dex entries
+        // Set up the spinner with all dex entries.
+        // If multiple dex files are selected (merged view), hide the spinner
+        // since switching would lose the merge.
         if (dexEntries.size() <= 1) {
             dexSpinner.setVisibility(View.GONE);
         } else {
+            dexSpinner.setVisibility(View.VISIBLE);
             ArrayAdapter<String> spinnerAdapter = new ArrayAdapter<>(
                     this, R.layout.spinner_item_dark, dexEntries);
             spinnerAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item_dark);
@@ -147,7 +150,11 @@ public class DexViewerActivity extends AppCompatActivity {
                 @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                     if (position != currentDexIndex) {
                         currentDexIndex = position;
-                        loadDexFile(dexEntries.get(position));
+                        // Switching to a single dex — replace dexEntries with just this one
+                        ArrayList<String> single = new ArrayList<>();
+                        single.add(dexEntries.get(position));
+                        dexEntries = single;
+                        loadDexFile(dexEntries.get(0));
                     }
                 }
                 @Override public void onNothingSelected(AdapterView<?> parent) {}
@@ -186,6 +193,29 @@ public class DexViewerActivity extends AppCompatActivity {
             try {
                 parser = new DexParser(currentDexFile);
                 root = parser.buildTree();
+
+                // If we have multiple selected dex entries, merge their trees.
+                // The selected dex files are in dexEntries (passed via intent).
+                // currentDexIndex points to the first one (already parsed above).
+                // Parse the rest and merge.
+                if (dexEntries != null && dexEntries.size() > 1) {
+                    for (int i = 0; i < dexEntries.size(); i++) {
+                        if (i == currentDexIndex) continue; // already parsed
+                        try {
+                            File extraDexFile = com.dt.manager.util.FileUtils.copyToCache(
+                                    DexViewerActivity.this,
+                                    inspector.openStream(dexEntries.get(i)),
+                                    dexEntries.get(i).replace("/", "_") + "_merge");
+                            DexParser extraParser = new DexParser(extraDexFile);
+                            DexParser.Node extraRoot = extraParser.buildTree();
+                            mergeTrees(root, extraRoot);
+                            extraParser.close();
+                        } catch (Exception e) {
+                            // Skip this dex if it fails
+                        }
+                    }
+                    root.sortChildren();
+                }
                 return root;
             } catch (Exception e) {
                 error = e.getMessage();
@@ -204,6 +234,23 @@ public class DexViewerActivity extends AppCompatActivity {
                 return;
             }
             renderCurrentTab();
+        }
+    }
+
+    /** Merge tree b into tree a (recursive). */
+    private void mergeTrees(DexParser.Node a, DexParser.Node b) {
+        for (DexParser.Node bChild : b.children) {
+            DexParser.Node aChild = a.findChild(bChild.name);
+            if (aChild != null) {
+                // Both trees have this package/class — merge recursively
+                if (aChild.isPackage && bChild.isPackage) {
+                    mergeTrees(aChild, bChild);
+                }
+                // If it's a class, we just keep the first one's version
+            } else {
+                // Add b's child to a
+                a.children.add(bChild);
+            }
         }
     }
 

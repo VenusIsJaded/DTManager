@@ -206,9 +206,9 @@ public class ApkViewerActivity extends AppCompatActivity {
         });
     }
 
-    /** Show options when tapping a .dex: open in Dex Editor, browse APK contents, or properties. */
+    /** Show options when tapping a .dex: MultiDex chooser with checkboxes.
+     *  User can select multiple dex files — they'll be merged in the Dex Viewer. */
     private void showDexOptions(ApkInspector.EntryInfo e) {
-        // Find all .dex files in the APK root
         List<String> allDexFiles = findAllDexFiles();
 
         // If only one dex, just open it
@@ -217,23 +217,57 @@ public class ApkViewerActivity extends AppCompatActivity {
             return;
         }
 
-        // MultiDex chooser — single-choice (radio) items. Previously we used
-        // multi-choice with manual unchecking, which caused a ClassCastException
-        // when more than one item was tapped (the dialog was androidx, not
-        // android.app). Single-choice avoids the crash entirely.
+        // MultiDex chooser — multi-select (checkboxes). The tapped dex
+        // is pre-checked. User can check more to merge them.
         int tappedIdx = allDexFiles.indexOf(e.getPath());
         if (tappedIdx < 0) tappedIdx = 0;
         final int tappedIdxFinal = tappedIdx;
 
+        final boolean[] checked = new boolean[allDexFiles.size()];
+        checked[tappedIdx] = true;
+
         CharSequence[] items = allDexFiles.toArray(new CharSequence[0]);
-        final int[] selected = { tappedIdxFinal };
         new AlertDialog.Builder(this)
                 .setTitle("MultiDex")
-                .setSingleChoiceItems(items, tappedIdxFinal, (d, which) -> selected[0] = which)
-                .setPositiveButton("OK", (d, which) -> {
-                    int sel = selected[0];
-                    if (sel < 0 || sel >= allDexFiles.size()) sel = tappedIdxFinal;
-                    openDexViewer(allDexFiles.get(sel), allDexFiles);
+                .setMultiChoiceItems(items, checked, (dialog, which, isChecked) -> {
+                    checked[which] = isChecked;
+                })
+                .setPositiveButton("SELECT ALL", (d, w) -> {
+                    for (int i = 0; i < checked.length; i++) checked[i] = true;
+                    // Re-show the dialog with all checked (can't update in-place easily)
+                    d.dismiss();
+                    showDexOptionsWithState(allDexFiles, checked);
+                })
+                .setNeutralButton("OK", (d, w) -> {
+                    // Collect all selected dex files
+                    List<String> selected = new ArrayList<>();
+                    for (int i = 0; i < checked.length; i++) {
+                        if (checked[i]) selected.add(allDexFiles.get(i));
+                    }
+                    if (selected.isEmpty()) {
+                        // At least open the tapped one
+                        selected.add(allDexFiles.get(tappedIdxFinal));
+                    }
+                    openDexViewer(selected.get(0), selected);
+                })
+                .setNegativeButton("CANCEL", null)
+                .show();
+    }
+
+    private void showDexOptionsWithState(List<String> allDexFiles, boolean[] checked) {
+        CharSequence[] items = allDexFiles.toArray(new CharSequence[0]);
+        new AlertDialog.Builder(this)
+                .setTitle("MultiDex")
+                .setMultiChoiceItems(items, checked, (dialog, which, isChecked) -> {
+                    checked[which] = isChecked;
+                })
+                .setPositiveButton("OK", (d, w) -> {
+                    List<String> selected = new ArrayList<>();
+                    for (int i = 0; i < checked.length; i++) {
+                        if (checked[i]) selected.add(allDexFiles.get(i));
+                    }
+                    if (selected.isEmpty()) selected.add(allDexFiles.get(0));
+                    openDexViewer(selected.get(0), selected);
                 })
                 .setNegativeButton("CANCEL", null)
                 .show();

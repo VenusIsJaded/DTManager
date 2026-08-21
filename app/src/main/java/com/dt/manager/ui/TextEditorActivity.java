@@ -69,6 +69,8 @@ public class TextEditorActivity extends AppCompatActivity {
     private boolean wasModified = false;    // any changes made this session
     private boolean fromApk = false;
     private boolean wasBinaryXml = false;
+    private byte[] originalBinaryXml = null;  // original AXML bytes (for patching)
+    private String originalDecodedText = null; // decoded text (for diffing)
 
     private final Handler autoSaveHandler = new Handler(Looper.getMainLooper());
     private final Runnable autoSaveRunnable = this::autoSave;
@@ -179,7 +181,9 @@ public class TextEditorActivity extends AppCompatActivity {
     private String decodeBytes(byte[] raw) {
         if (BinaryXmlDecoder.isBinaryXml(raw)) {
             wasBinaryXml = true;
+            originalBinaryXml = raw; // keep for patching on save
             String decoded = BinaryXmlDecoder.decode(raw);
+            originalDecodedText = decoded; // keep for diffing
             return decoded != null ? decoded : "";
         }
         if (raw.length >= 3 && (raw[0] & 0xFF) == 0xEF
@@ -295,24 +299,35 @@ public class TextEditorActivity extends AppCompatActivity {
             finish();
             return;
         }
-
-        // Warn if binary XML — saving as text will break the APK
-        if (wasBinaryXml) {
-            new AlertDialog.Builder(this)
-                    .setTitle("Warning")
-                    .setMessage(R.string.repack_warn_binary_xml)
-                    .setPositiveButton("Continue", (d, w) -> doRepack(apkPath, entryPath))
-                    .setNegativeButton("Cancel", null)
-                    .show();
-        } else {
-            doRepack(apkPath, entryPath);
-        }
+        // Binary XML is now properly patched (string pool round-trip),
+        // so no warning needed. Structure changes to binary XML are still
+        // unsupported — if patching fails, an error toast will show.
+        doRepack(apkPath, entryPath);
     }
 
     private void doRepack(String apkPath, String entryPath) {
         final File apkFile = new File(apkPath);
         final Map<String, byte[]> modifiedEntries = new HashMap<>();
-        modifiedEntries.put(entryPath, editor.getText().toString().getBytes(StandardCharsets.UTF_8));
+
+        byte[] entryBytes;
+        if (wasBinaryXml && originalBinaryXml != null && originalDecodedText != null) {
+            // Binary XML round-trip: patch the original binary's string pool
+            String editedText = editor.getText().toString();
+            byte[] patched = com.dt.manager.core.BinaryXmlPatcher.patch(
+                    originalBinaryXml, originalDecodedText, editedText);
+            if (patched == null) {
+                Toast.makeText(this,
+                        "Cannot patch binary XML (structure may have changed). " +
+                        "Editing binary XML structure is not supported yet.",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            entryBytes = patched;
+        } else {
+            // Text file — write as UTF-8
+            entryBytes = editor.getText().toString().getBytes(StandardCharsets.UTF_8);
+        }
+        modifiedEntries.put(entryPath, entryBytes);
 
         final AlertDialog progress = new AlertDialog.Builder(this)
                 .setTitle(R.string.repack_progress)
@@ -333,7 +348,6 @@ public class TextEditorActivity extends AppCompatActivity {
                     public void onSuccess(File repackedApk) {
                         runOnUiThread(() -> {
                             progress.dismiss();
-                            // Delete the cached edit file — APK is now the source of truth
                             if (workingFile != null) workingFile.delete();
                             Toast.makeText(TextEditorActivity.this,
                                     R.string.repack_success, Toast.LENGTH_SHORT).show();
