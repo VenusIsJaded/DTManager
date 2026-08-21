@@ -4,5 +4,9 @@
     <item
         android:id="@+id/action_save"
         android:title="@string/action_save"
-        app:showAsAction="always|withText" />
+        app:showAsAction="ifRoom|withText" />
+    <item
+        android:id="@+id/action_save_to_apk"
+        android:title="@string/action_save_to_apk"
+        app:showAsAction="ifRoom|withText" />
 </menu>

@@ -26,6 +26,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 /**
  * Plain-text editor for any file inside (or outside) an APK.
@@ -236,8 +237,102 @@ public class TextEditorActivity extends AppCompatActivity {
         } else if (id == R.id.action_save) {
             save();
             return true;
+        } else if (id == R.id.action_save_to_apk) {
+            saveToApk();
+            return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    /** Save the current edit back into the APK file on disk by repacking + re-signing. */
+    private void saveToApk() {
+        if (!fromApk) {
+            // For files on disk, just save normally
+            save();
+            return;
+        }
+        String apkPath = getIntent().getStringExtra(EXTRA_APK_PATH);
+        String entryPath = getIntent().getStringExtra(EXTRA_ENTRY_PATH);
+        if (apkPath == null || entryPath == null) {
+            Toast.makeText(this, "Cannot repack — missing APK info", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        // First, save the current editor content to the cache file
+        save();
+
+        final File apkFile = new File(apkPath);
+        final Map<String, byte[]> modifiedEntries = new java.util.HashMap<>();
+        try {
+            modifiedEntries.put(entryPath, editor.getText().toString().getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            Toast.makeText(this, "Encode failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        // Warn if the original was binary XML — saving as text may break the APK
+        Runnable doRepack = () -> runRepack(apkFile, modifiedEntries, entryPath);
+        if (wasBinaryXml) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Warning")
+                    .setMessage(R.string.repack_warn_binary_xml)
+                    .setPositiveButton("Continue", (d, w) -> doRepack.run())
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        } else {
+            doRepack.run();
+        }
+    }
+
+    private void runRepack(File apkFile, Map<String, byte[]> modifiedEntries, String entryPath) {
+        final androidx.appcompat.app.AlertDialog progress = new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle(R.string.repack_progress)
+                .setMessage("Starting...")
+                .setCancelable(false)
+                .show();
+
+        com.dt.manager.core.ApkRepacker.repack(this, apkFile, modifiedEntries,
+                new com.dt.manager.core.ApkRepacker.ProgressListener() {
+                    @Override
+                    public void onProgress(String message) {
+                        runOnUiThread(() -> {
+                            if (progress.isShowing()) {
+                                progress.setMessage(message);
+                            }
+                        });
+                    }
+
+                    @Override
+                    public void onSuccess(File repackedApk) {
+                        runOnUiThread(() -> {
+                            progress.dismiss();
+                            // Delete the cached edit file so next open loads from the repacked APK
+                            if (workingFile != null) workingFile.delete();
+                            Toast.makeText(TextEditorActivity.this,
+                                    R.string.repack_success, Toast.LENGTH_SHORT).show();
+                            dirty = false;
+                            updateStatus();
+                            // Update the apkPath intent extra to point to the new APK
+                            // (same path on disk, but ensures re-open reads fresh content)
+                            getIntent().putExtra(EXTRA_APK_PATH, repackedApk.getAbsolutePath());
+                            fromApk = true;
+                            // Reload from the repacked APK so editor reflects what's actually in the APK now
+                            // (in case the editor's view of the content was diverging)
+                            // Re-extract by clearing the cache and reopening
+                            loadFromApk(repackedApk.getAbsolutePath(), entryPath);
+                        });
+                    }
+
+                    @Override
+                    public void onError(String message) {
+                        runOnUiThread(() -> {
+                            progress.dismiss();
+                            Toast.makeText(TextEditorActivity.this,
+                                    getString(R.string.repack_fail, message),
+                                    Toast.LENGTH_LONG).show();
+                        });
+                    }
+                });
     }
 
     @Override
