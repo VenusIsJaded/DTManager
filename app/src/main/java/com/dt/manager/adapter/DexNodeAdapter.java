@@ -61,12 +61,9 @@ public class DexNodeAdapter extends RecyclerView.Adapter<DexNodeAdapter.VH> {
 
     /** Toggle expansion state of a package node */
     public void toggle(DexParser.Node node) {
+        if (!node.isPackage) return;  // Only packages can be toggled
         int idx = visible.indexOf(node);
         if (idx < 0) return;
-        if (!node.isPackage) {
-            if (listener != null) listener.onNodeClicked(node);
-            return;
-        }
         boolean wasExpanded = isExpanded(node, idx);
         if (wasExpanded) {
             collapseAt(idx + 1, node.depth);
@@ -159,8 +156,14 @@ public class DexNodeAdapter extends RecyclerView.Adapter<DexNodeAdapter.VH> {
             }
 
             itemView.setOnClickListener(v -> {
-                if (listener != null) listener.onNodeClicked(node);
-                toggle(node);
+                if (node.isPackage) {
+                    // Package: expand/collapse
+                    toggle(node);
+                } else {
+                    // Class: open in smali editor (DON'T call toggle — it would
+                    // call onNodeClicked again and open the editor twice!)
+                    if (listener != null) listener.onNodeClicked(node);
+                }
             });
         }
     }

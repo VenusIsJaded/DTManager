@@ -1,9 +1,5 @@
 package com.dt.manager.core;
 
-import org.xmlpull.v1.XmlPullParser;
-import org.xmlpull.v1.XmlPullParserFactory;
-
-import java.io.StringReader;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -11,6 +7,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Patches an Android binary XML (AXML) file by updating its string
@@ -22,19 +20,26 @@ import java.util.Map;
  * keep the original binary bytes and only swap out changed strings.
  *
  * The approach:
- *   1. Parse the original decoded text and the edited text in parallel
- *   2. Walk both XML trees, comparing attribute values and text content
+ *   1. Extract the string pool from the original binary
+ *   2. Diff the original decoded text and the edited text using regex
+ *      (extract all quoted attribute values, compare position-by-position)
  *   3. Build a map of (old string → new string)
- *   4. Patch the string pool in the original binary bytes
+ *   4. Apply changes to the string pool (replace ALL occurrences)
  *   5. Re-encode the string pool chunk with updated strings
  *   6. Update chunk sizes and file size
  *
- * Limitation: if the user changes the XML structure (adds/removes tags
- * or attributes), this patcher won't work. It only handles value changes.
+ * Regex diff is used instead of XmlPullParser because the decoded text
+ * may contain namespace prefixes (android:foo) without xmlns declarations
+ * (binary XML stores namespaces separately), which would make XmlPullParser
+ * reject the text with "unbound prefix" errors.
  */
 public final class BinaryXmlPatcher {
 
     private BinaryXmlPatcher() {}
+
+    /** Pattern matching attribute values: name="value" or ns:name="value" */
+    private static final Pattern ATTR_PATTERN =
+            Pattern.compile("(\\w+(?::\\w+)?)=\"([^\"]*)\"");
 
     /**
      * Patch the original binary XML with changes from the edited text.
@@ -167,49 +172,34 @@ public final class BinaryXmlPatcher {
     /* ===== XML diff ===== */
 
     /**
-     * Walk two XML texts in parallel and build a map of (old value → new value)
-     * for all changed string values (attribute values + text content).
+     * Diff two XML texts by extracting all quoted attribute values and
+     * comparing them position-by-position. This avoids the "unbound prefix"
+     * error that XmlPullParser throws when namespace declarations are missing
+     * (which they are in decoded binary XML — namespaces are stored separately).
+     *
+     * Returns a map of (old value → new value) for all changed values.
      */
     private static Map<String, String> diffXml(String originalText, String editedText) {
         Map<String, String> changes = new LinkedHashMap<>();
-        try {
-            XmlPullParserFactory factory = XmlPullParserFactory.newInstance();
-            factory.setNamespaceAware(true);
-            XmlPullParser orig = factory.newPullParser();
-            XmlPullParser edited = factory.newPullParser();
-            orig.setInput(new StringReader(originalText));
-            edited.setInput(new StringReader(editedText));
 
-            // Walk both parsers in parallel, comparing attribute values
-            while (true) {
-                int origEvent = orig.next();
-                int editedEvent = edited.next();
-                if (origEvent != editedEvent) {
-                    // Structure changed — can't diff
-                    return changes;
-                }
-                if (origEvent == XmlPullParser.END_DOCUMENT) break;
+        Matcher origMatcher = ATTR_PATTERN.matcher(originalText);
+        Matcher editedMatcher = ATTR_PATTERN.matcher(editedText);
 
-                if (origEvent == XmlPullParser.START_TAG) {
-                    // Compare attributes
-                    for (int i = 0; i < orig.getAttributeCount(); i++) {
-                        String origName = orig.getAttributeName(i);
-                        String origVal = orig.getAttributeValue(i);
-                        // Find matching attribute in edited
-                        for (int j = 0; j < edited.getAttributeCount(); j++) {
-                            if (edited.getAttributeName(j).equals(origName)) {
-                                String editedVal = edited.getAttributeValue(j);
-                                if (!origVal.equals(editedVal)) {
-                                    changes.put(origVal, editedVal);
-                                }
-                                break;
-                            }
-                        }
-                    }
+        java.util.List<String> origValues = new ArrayList<>();
+        java.util.List<String> editedValues = new ArrayList<>();
+        while (origMatcher.find()) origValues.add(origMatcher.group(2));
+        while (editedMatcher.find()) editedValues.add(editedMatcher.group(2));
+
+        int count = Math.min(origValues.size(), editedValues.size());
+        for (int i = 0; i < count; i++) {
+            String origVal = origValues.get(i);
+            String editedVal = editedValues.get(i);
+            if (!origVal.equals(editedVal) && !origVal.isEmpty() && !editedVal.isEmpty()) {
+                // Only add if not already mapped (first occurrence wins)
+                if (!changes.containsKey(origVal)) {
+                    changes.put(origVal, editedVal);
                 }
             }
-        } catch (Exception e) {
-            // If diff fails, return empty — caller will use original
         }
         return changes;
     }
