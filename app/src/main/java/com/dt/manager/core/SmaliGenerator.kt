@@ -110,7 +110,7 @@ object SmaliGenerator {
     /** Convert "java.lang.String" → "Ljava/lang/String;", "int" → "I", etc. */
     private fun nameToDescriptor(name: String?): String {
         if (name.isNullOrEmpty()) return "V"
-        var current = name
+        var current: String = name
         var arr = 0
         while (current.endsWith("[]")) {
             arr++

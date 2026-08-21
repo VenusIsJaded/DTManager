@@ -373,7 +373,7 @@ class DexParser : Closeable {
         @JvmStatic
         fun descriptorToName(desc: String?): String {
             if (desc.isNullOrEmpty()) return desc ?: ""
-            var current = desc
+            var current: String = desc
             var arrDim = 0
             while (current.startsWith("[")) {
                 arrDim++
