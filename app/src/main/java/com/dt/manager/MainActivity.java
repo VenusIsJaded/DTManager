@@ -1,7 +1,6 @@
 package com.dt.manager;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -11,7 +10,8 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.view.Menu;
 import android.view.MenuItem;
-import android.view.View;
+import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -20,48 +20,55 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
 
 import com.dt.manager.adapter.FileListAdapter;
+import com.dt.manager.core.ApkInstaller;
+import com.dt.manager.core.FilePaneController;
 import com.dt.manager.ui.AboutActivity;
+import com.dt.manager.ui.ApkInfoDialog;
 import com.dt.manager.ui.ApkViewerActivity;
+import com.dt.manager.ui.TextEditorActivity;
 import com.dt.manager.util.FileUtils;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.io.File;
-import java.util.Stack;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 public class MainActivity extends AppCompatActivity {
 
     private MaterialToolbar toolbar;
     private TextView pathText;
     private TextView summaryText;
-    private TextView emptyView;
-    private RecyclerView recyclerView;
-    private FileListAdapter adapter;
+    private FrameLayout paneLeftWrap, paneRightWrap;
     private FloatingActionButton fab;
 
-    private File currentDir;
-    private final Stack<File> history = new Stack<>();
+    private FilePaneController leftPane, rightPane;
+    private FilePaneController activePane;
 
     private final ActivityResultLauncher<String> storagePermLauncher =
             registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
-                if (granted) refresh();
+                if (granted) initPanes();
                 else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) tryOpenAllFilesAccess();
             });
 
     private final ActivityResultLauncher<Intent> allFilesLauncher =
             registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
-                    refresh();
+                    initPanes();
                 } else {
                     Toast.makeText(this, R.string.grant_storage_perm, Toast.LENGTH_SHORT).show();
                 }
             });
+
+    /** Text extensions we open in the in-app editor. */
+    private static final Set<String> TEXT_EXT = new HashSet<>(Arrays.asList(
+            "txt", "ts", "js", "json", "xml", "smali", "properties", "md",
+            "yml", "yaml", "ini", "cfg", "csv", "log", "html", "css", "java", "kt"
+    ));
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -71,14 +78,13 @@ public class MainActivity extends AppCompatActivity {
         toolbar = findViewById(R.id.toolbar);
         pathText = findViewById(R.id.pathText);
         summaryText = findViewById(R.id.summaryText);
-        emptyView = findViewById(R.id.emptyView);
-        recyclerView = findViewById(R.id.recyclerView);
+        paneLeftWrap = findViewById(R.id.paneLeftWrap);
+        paneRightWrap = findViewById(R.id.paneRightWrap);
         fab = findViewById(R.id.fab);
 
         setSupportActionBar(toolbar);
 
-        recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        adapter = new FileListAdapter(this, new FileListAdapter.OnItemClickListener() {
+        FileListAdapter.OnItemClickListener listener = new FileListAdapter.OnItemClickListener() {
             @Override
             public void onItemClicked(Object item) {
                 if (item instanceof File) handleFileClick((File) item);
@@ -91,16 +97,58 @@ public class MainActivity extends AppCompatActivity {
                 }
                 return false;
             }
-        });
-        recyclerView.setAdapter(adapter);
+        };
 
-        fab.setOnClickListener(v -> refresh());
+        FilePaneController.OnPaneNavigateListener navListener = pane -> setActivePane(pane);
+
+        View leftRoot = findViewById(R.id.paneLeft);
+        View rightRoot = findViewById(R.id.paneRight);
+        leftPane = new FilePaneController(this, leftRoot, listener, navListener);
+        rightPane = new FilePaneController(this, rightRoot, listener, navListener);
+
+        fab.setOnClickListener(v -> {
+            if (activePane != null) activePane.refresh();
+        });
 
         if (!checkStoragePermission()) {
             requestStoragePermission();
         } else {
-            currentDir = FileUtils.getRootStoragePath(this);
-            refresh();
+            initPanes();
+        }
+    }
+
+    private void initPanes() {
+        File root = FileUtils.getRootStoragePath(this);
+        leftPane.setRoot(root);
+        rightPane.setRoot(root);
+        setActivePane(leftPane);
+    }
+
+    private void setActivePane(FilePaneController pane) {
+        activePane = pane;
+        // Highlight active pane subtly
+        paneLeftWrap.setBackgroundColor(
+                ContextCompat.getColor(this, pane == leftPane ? R.color.bg_tertiary : R.color.bg_primary));
+        paneRightWrap.setBackgroundColor(
+                ContextCompat.getColor(this, pane == rightPane ? R.color.bg_tertiary : R.color.bg_primary));
+
+        // Sync top header
+        if (pane != null && pane.getCurrentDir() != null) {
+            File cur = pane.getCurrentDir();
+            pathText.setText(cur.getAbsolutePath() + "/");
+            int folders = FileUtils.countFolders(cur);
+            int files = FileUtils.countFiles(cur);
+            String disk = FileUtils.diskSummary(cur);
+            if (disk.isEmpty()) {
+                summaryText.setText(getString(R.string.format_summary, folders, files));
+            } else {
+                String[] parts = disk.split("/");
+                if (parts.length == 2) {
+                    summaryText.setText(getString(R.string.format_summary_disk, folders, files, parts[0], parts[1]));
+                } else {
+                    summaryText.setText(getString(R.string.format_summary, folders, files));
+                }
+            }
         }
     }
 
@@ -114,16 +162,34 @@ public class MainActivity extends AppCompatActivity {
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         int id = item.getItemId();
         if (id == R.id.action_refresh) {
-            refresh();
+            if (activePane != null) activePane.refresh();
             return true;
         } else if (id == R.id.action_about) {
             startActivity(new Intent(this, AboutActivity.class));
             return true;
         } else if (id == R.id.action_search) {
-            Toast.makeText(this, R.string.error_not_implemented, Toast.LENGTH_SHORT).show();
+            showSearchDialog();
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    private void showSearchDialog() {
+        if (activePane == null) return;
+        final EditText et = new EditText(this);
+        et.setHint("Filter by name (case-insensitive)");
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.action_search)
+                .setView(et)
+                .setPositiveButton(android.R.string.search_go, (d, w) -> {
+                    String q = et.getText().toString().trim();
+                    activePane.setQuery(q.toLowerCase());
+                    if (activePane == leftPane || activePane == rightPane) {
+                        setActivePane(activePane);
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
     }
 
     private boolean checkStoragePermission() {
@@ -162,65 +228,115 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void refresh() {
-        if (currentDir == null) currentDir = FileUtils.getRootStoragePath(this);
-        java.util.List<File> items = FileUtils.listFiles(currentDir);
-        adapter.setItems(items);
-        pathText.setText(currentDir.getAbsolutePath() + (currentDir.isDirectory() ? "/" : ""));
-
-        int folders = FileUtils.countFolders(currentDir);
-        int files = FileUtils.countFiles(currentDir);
-        String disk = FileUtils.diskSummary(currentDir);
-        if (disk.isEmpty()) {
-            summaryText.setText(getString(R.string.format_summary, folders, files));
-        } else {
-            summaryText.setText(getString(R.string.format_summary_disk, folders, files, disk.split("/")[0], disk.split("/")[1]));
-        }
-        emptyView.setVisibility(items.isEmpty() ? View.VISIBLE : View.GONE);
-    }
-
     private void handleFileClick(File f) {
+        if (activePane == null) setActivePane(leftPane);
         if (f.isDirectory()) {
-            history.push(currentDir);
-            currentDir = f;
-            refresh();
+            activePane.navigateTo(f);
+            setActivePane(activePane);
         } else {
             String name = f.getName().toLowerCase();
             if (name.endsWith(".apk") || name.endsWith(".xapk") || name.endsWith(".apkm")) {
-                Intent intent = new Intent(this, ApkViewerActivity.class);
-                intent.putExtra(ApkViewerActivity.EXTRA_APK_PATH, f.getAbsolutePath());
-                startActivity(intent);
+                showApkInfoDialog(f);
+            } else if (isTextFile(name)) {
+                openTextEditor(f);
             } else {
                 Toast.makeText(this, R.string.error_no_handler, Toast.LENGTH_SHORT).show();
             }
         }
     }
 
-    private void showFileOptions(File f) {
-        String[] options = {getString(R.string.action_install), getString(R.string.action_view), getString(R.string.action_properties)};
+    private boolean isTextFile(String lowerName) {
+        int dot = lowerName.lastIndexOf('.');
+        if (dot < 0) return false;
+        return TEXT_EXT.contains(lowerName.substring(dot + 1));
+    }
+
+    private void openTextEditor(File file) {
+        Intent intent = new Intent(this, TextEditorActivity.class);
+        intent.putExtra(TextEditorActivity.EXTRA_FILE_PATH, file.getAbsolutePath());
+        startActivity(intent);
+    }
+
+    private void showApkInfoDialog(File apkFile) {
+        ApkInfoDialog.show(this, apkFile, new ApkInfoDialog.Listener() {
+            @Override
+            public void onView(File apkFile) {
+                Intent intent = new Intent(MainActivity.this, ApkViewerActivity.class);
+                intent.putExtra(ApkViewerActivity.EXTRA_APK_PATH, apkFile.getAbsolutePath());
+                startActivity(intent);
+            }
+            @Override
+            public void onInstall(File apkFile) {
+                new ApkInstaller(MainActivity.this, new ApkInstaller.Callback() {
+                    @Override public void onSuccess(String message) { Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show(); }
+                    @Override public void onError(String message) { Toast.makeText(MainActivity.this, getString(R.string.install_fail, message), Toast.LENGTH_LONG).show(); }
+                }).install(apkFile);
+            }
+            @Override
+            public void onFunctions(File apkFile) {
+                showFunctionsMenu(apkFile);
+            }
+        });
+    }
+
+    private void showFunctionsMenu(File apkFile) {
         new AlertDialog.Builder(this)
-                .setTitle(f.getName())
-                .setItems(options, (d, which) -> {
+                .setTitle(apkFile.getName())
+                .setItems(new CharSequence[]{
+                        "Install", "View inside", "Properties"
+                }, (d, which) -> {
                     switch (which) {
                         case 0:
-                            if (f.getName().toLowerCase().endsWith(".apk")
-                                    || f.getName().toLowerCase().endsWith(".xapk")
-                                    || f.getName().toLowerCase().endsWith(".apkm")) {
-                                new com.dt.manager.core.ApkInstaller(this, new com.dt.manager.core.ApkInstaller.Callback() {
-                                    @Override public void onSuccess(String message) { Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show(); }
-                                    @Override public void onError(String message) { Toast.makeText(MainActivity.this, getString(R.string.install_fail, message), Toast.LENGTH_LONG).show(); }
-                                }).install(f);
-                            } else {
-                                Toast.makeText(this, R.string.error_no_handler, Toast.LENGTH_SHORT).show();
-                            }
+                            new ApkInstaller(this, new ApkInstaller.Callback() {
+                                @Override public void onSuccess(String m) { Toast.makeText(MainActivity.this, m, Toast.LENGTH_SHORT).show(); }
+                                @Override public void onError(String m) { Toast.makeText(MainActivity.this, getString(R.string.install_fail, m), Toast.LENGTH_LONG).show(); }
+                            }).install(apkFile);
                             break;
                         case 1:
-                            handleFileClick(f);
+                            Intent intent = new Intent(this, ApkViewerActivity.class);
+                            intent.putExtra(ApkViewerActivity.EXTRA_APK_PATH, apkFile.getAbsolutePath());
+                            startActivity(intent);
                             break;
                         case 2:
-                            showProperties(f);
+                            showProperties(apkFile);
                             break;
                     }
+                })
+                .show();
+    }
+
+    /** Context-aware long-press menu — Install only for APK/XAPK/APKM, never for folders. */
+    private void showFileOptions(File f) {
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        java.util.List<Runnable> actions = new java.util.ArrayList<>();
+
+        if (f.isDirectory()) {
+            // Folders: just Properties. "View inside" is redundant (tapping already does it).
+            labels.add("Properties");
+            actions.add(() -> showProperties(f));
+        } else {
+            String name = f.getName().toLowerCase();
+            if (name.endsWith(".apk") || name.endsWith(".xapk") || name.endsWith(".apkm")) {
+                labels.add("Details");
+                actions.add(() -> showApkInfoDialog(f));
+                labels.add("Install");
+                actions.add(() -> new ApkInstaller(this, new ApkInstaller.Callback() {
+                    @Override public void onSuccess(String m) { Toast.makeText(MainActivity.this, m, Toast.LENGTH_SHORT).show(); }
+                    @Override public void onError(String m) { Toast.makeText(MainActivity.this, getString(R.string.install_fail, m), Toast.LENGTH_LONG).show(); }
+                }).install(f));
+            } else if (isTextFile(name)) {
+                labels.add("Edit");
+                actions.add(() -> openTextEditor(f));
+            }
+            labels.add("Properties");
+            actions.add(() -> showProperties(f));
+        }
+
+        CharSequence[] arr = labels.toArray(new CharSequence[0]);
+        new AlertDialog.Builder(this)
+                .setTitle(f.getName())
+                .setItems(arr, (d, which) -> {
+                    if (which >= 0 && which < actions.size()) actions.get(which).run();
                 })
                 .show();
     }
@@ -236,11 +352,10 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (!history.isEmpty()) {
-            currentDir = history.pop();
-            refresh();
-        } else {
-            super.onBackPressed();
+        if (activePane != null && activePane.goBack()) {
+            setActivePane(activePane);
+            return;
         }
+        super.onBackPressed();
     }
 }

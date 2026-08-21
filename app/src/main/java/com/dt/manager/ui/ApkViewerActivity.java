@@ -14,7 +14,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.dt.manager.MainActivity;
 import com.dt.manager.R;
 import com.dt.manager.adapter.FileListAdapter;
 import com.dt.manager.core.ApkInspector;
@@ -22,9 +21,11 @@ import com.dt.manager.core.ApkInstaller;
 import com.dt.manager.util.FileUtils;
 
 import com.google.android.material.appbar.MaterialToolbar;
-import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.io.File;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Stack;
 
 public class ApkViewerActivity extends AppCompatActivity {
@@ -37,12 +38,16 @@ public class ApkViewerActivity extends AppCompatActivity {
     private TextView emptyView;
     private RecyclerView recyclerView;
     private FileListAdapter adapter;
-    private FloatingActionButton fabInstall;
 
     private File apkFile;
     private ApkInspector inspector;
     private String currentDir = "";
     private final Stack<String> history = new Stack<>();
+
+    private static final Set<String> TEXT_EXT = new HashSet<>(Arrays.asList(
+            "txt", "ts", "js", "json", "xml", "smali", "properties", "md",
+            "yml", "yaml", "ini", "cfg", "csv", "log", "html", "css", "java", "kt"
+    ));
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,7 +59,6 @@ public class ApkViewerActivity extends AppCompatActivity {
         summaryText = findViewById(R.id.summaryText);
         emptyView = findViewById(R.id.emptyView);
         recyclerView = findViewById(R.id.recyclerView);
-        fabInstall = findViewById(R.id.fabInstall);
 
         String path = getIntent().getStringExtra(EXTRA_APK_PATH);
         if (path == null || path.isEmpty()) {
@@ -74,7 +78,9 @@ public class ApkViewerActivity extends AppCompatActivity {
 
         toolbar.setTitle(apkFile.getName() + "/");
         setSupportActionBar(toolbar);
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+        }
 
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         adapter = new FileListAdapter(this, new FileListAdapter.OnItemClickListener() {
@@ -95,13 +101,6 @@ public class ApkViewerActivity extends AppCompatActivity {
         });
         recyclerView.setAdapter(adapter);
 
-        fabInstall.setOnClickListener(v -> {
-            new ApkInstaller(this, new ApkInstaller.Callback() {
-                @Override public void onSuccess(String message) { Toast.makeText(ApkViewerActivity.this, message, Toast.LENGTH_SHORT).show(); }
-                @Override public void onError(String message) { Toast.makeText(ApkViewerActivity.this, getString(R.string.install_fail, message), Toast.LENGTH_LONG).show(); }
-            }).install(apkFile);
-        });
-
         refresh();
     }
 
@@ -116,9 +115,6 @@ public class ApkViewerActivity extends AppCompatActivity {
         int id = item.getItemId();
         if (id == android.R.id.home) {
             onBackPressed();
-            return true;
-        } else if (id == R.id.action_install) {
-            fabInstall.performClick();
             return true;
         } else if (id == R.id.action_extract_all) {
             Toast.makeText(this, R.string.error_not_implemented, Toast.LENGTH_SHORT).show();
@@ -150,25 +146,40 @@ public class ApkViewerActivity extends AppCompatActivity {
             history.push(currentDir);
             currentDir = e.getPath();
             refresh();
-        } else {
-            String name = e.getName().toLowerCase();
-            if (name.endsWith(".dex")) {
-                openDexViewer(e.getPath());
-            } else if (name.endsWith(".apk")) {
-                // Inner APK inside XAPK/APKM — open nested inspector
-                Intent intent = new Intent(this, ApkViewerActivity.class);
-                try {
-                    File staged = com.dt.manager.util.FileUtils.copyToCache(this,
-                            inspector.openStream(e.getPath()), e.getName());
-                    intent.putExtra(EXTRA_APK_PATH, staged.getAbsolutePath());
-                    startActivity(intent);
-                } catch (Exception ex) {
-                    Toast.makeText(this, ex.getMessage(), Toast.LENGTH_LONG).show();
-                }
-            } else {
-                Toast.makeText(this, R.string.error_no_handler, Toast.LENGTH_SHORT).show();
-            }
+            return;
         }
+        String name = e.getName().toLowerCase();
+        if (name.endsWith(".dex")) {
+            openDexViewer(e.getPath());
+        } else if (name.endsWith(".apk")) {
+            // Nested APK — open it in a new ApkViewerActivity
+            try {
+                File staged = FileUtils.copyToCache(this,
+                        inspector.openStream(e.getPath()), e.getName());
+                Intent intent = new Intent(this, ApkViewerActivity.class);
+                intent.putExtra(EXTRA_APK_PATH, staged.getAbsolutePath());
+                startActivity(intent);
+            } catch (Exception ex) {
+                Toast.makeText(this, ex.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        } else if (isTextEntry(name)) {
+            openInTextEditor(e.getPath());
+        } else {
+            Toast.makeText(this, R.string.error_no_handler, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private boolean isTextEntry(String lowerName) {
+        int dot = lowerName.lastIndexOf('.');
+        if (dot < 0) return false;
+        return TEXT_EXT.contains(lowerName.substring(dot + 1));
+    }
+
+    private void openInTextEditor(String entryPath) {
+        Intent intent = new Intent(this, TextEditorActivity.class);
+        intent.putExtra(TextEditorActivity.EXTRA_APK_PATH, apkFile.getAbsolutePath());
+        intent.putExtra(TextEditorActivity.EXTRA_ENTRY_PATH, entryPath);
+        startActivity(intent);
     }
 
     private void openDexViewer(String entryPath) {
@@ -178,11 +189,61 @@ public class ApkViewerActivity extends AppCompatActivity {
         startActivity(intent);
     }
 
+    /** Context-aware long-press — only relevant actions per file type. */
     private void showEntryOptions(ApkInspector.EntryInfo e) {
+        if (e.isDirectory()) {
+            // Folders: no actions needed (tapping already navigates in)
+            new AlertDialog.Builder(this)
+                    .setTitle(e.getName())
+                    .setMessage("Folder")
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show();
+            return;
+        }
+
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        java.util.List<Runnable> actions = new java.util.ArrayList<>();
+
+        String name = e.getName().toLowerCase();
+        if (name.endsWith(".dex")) {
+            labels.add("Open in Dex Editor");
+            actions.add(() -> openDexViewer(e.getPath()));
+        } else if (name.endsWith(".apk")) {
+            labels.add("Install");
+            actions.add(() -> {
+                try {
+                    File staged = FileUtils.copyToCache(this,
+                            inspector.openStream(e.getPath()), e.getName());
+                    new ApkInstaller(this, new ApkInstaller.Callback() {
+                        @Override public void onSuccess(String m) { Toast.makeText(ApkViewerActivity.this, m, Toast.LENGTH_SHORT).show(); }
+                        @Override public void onError(String m) { Toast.makeText(ApkViewerActivity.this, getString(R.string.install_fail, m), Toast.LENGTH_LONG).show(); }
+                    }).install(staged);
+                } catch (Exception ex) {
+                    Toast.makeText(this, ex.getMessage(), Toast.LENGTH_LONG).show();
+                }
+            });
+        } else if (isTextEntry(name)) {
+            labels.add("Edit");
+            actions.add(() -> openInTextEditor(e.getPath()));
+        }
+
+        labels.add("Properties");
+        actions.add(() -> showEntryProperties(e));
+
+        CharSequence[] arr = labels.toArray(new CharSequence[0]);
         new AlertDialog.Builder(this)
                 .setTitle(e.getName())
-                .setItems(new CharSequence[]{getString(R.string.action_view)}, (d, w) -> handleEntryClick(e))
+                .setItems(arr, (d, which) -> {
+                    if (which >= 0 && which < actions.size()) actions.get(which).run();
+                })
                 .show();
+    }
+
+    private void showEntryProperties(ApkInspector.EntryInfo e) {
+        String msg = "Path: " + e.getPath()
+                + "\nSize: " + FileUtils.humanReadable(e.getSize())
+                + "\nModified: " + FileUtils.formatDate(e.getTime());
+        new AlertDialog.Builder(this).setTitle(e.getName()).setMessage(msg).show();
     }
 
     @Override

@@ -2,12 +2,9 @@ package com.dt.manager.ui;
 
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.text.Editable;
-import android.text.TextWatcher;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -64,13 +61,11 @@ public class DexViewerActivity extends AppCompatActivity {
         loading = findViewById(R.id.loading);
 
         setSupportActionBar(toolbar);
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+        }
         toolbar.setTitle(getString(R.string.title_dex_viewer));
 
-        dexFile = (File) getLastCustomNonConfigurationInstance();
-
-        // Initialize tabs
         tabs.addTab(tabs.newTab().setText(R.string.tab_explorer));
         tabs.addTab(tabs.newTab().setText(R.string.tab_history));
         tabs.addTab(tabs.newTab().setText(R.string.tab_search));
@@ -86,21 +81,12 @@ public class DexViewerActivity extends AppCompatActivity {
 
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         adapter = new DexNodeAdapter(this, node -> {
-            // Class tapped
-            new AlertDialog.Builder(this)
-                    .setTitle(node.name)
-                    .setMessage(node.path)
-                    .setPositiveButton(android.R.string.ok, null)
-                    .show();
+            // Class tapped — show class details
+            showClassDetails(node);
         });
         recyclerView.setAdapter(adapter);
 
         loadDexFile();
-    }
-
-    @Override
-    public Object onRetainCustomNonConfigurationInstance() {
-        return dexFile;
     }
 
     private void loadDexFile() {
@@ -173,18 +159,10 @@ public class DexViewerActivity extends AppCompatActivity {
     private void renderCurrentTab() {
         if (root == null) return;
         switch (currentTab) {
-            case 0:
-                renderExplorer();
-                break;
-            case 1:
-                renderHistory();
-                break;
-            case 2:
-                renderSearch();
-                break;
-            case 3:
-                renderStrings();
-                break;
+            case 0: renderExplorer(); break;
+            case 1: renderHistory(); break;
+            case 2: renderSearch(); break;
+            case 3: renderStrings(); break;
         }
     }
 
@@ -195,14 +173,11 @@ public class DexViewerActivity extends AppCompatActivity {
     }
 
     private void renderHistory() {
-        // Show all classes flat — "history" tab in MT Manager shows recently viewed classes.
-        // For basic version, we'll show a flat list of all classes.
         adapter.setRoot(null);
         java.util.List<String> all = new ArrayList<>();
         collectClassNames(root, all);
         emptyView.setText(getString(R.string.tab_history) + ": " + all.size() + " classes");
         emptyView.setVisibility(View.VISIBLE);
-        // Could be improved — for now we just show the count.
     }
 
     private void collectClassNames(DexParser.Node n, List<String> out) {
@@ -211,17 +186,16 @@ public class DexViewerActivity extends AppCompatActivity {
     }
 
     private void renderSearch() {
-        // Show search dialog
-        final EditText et = new EditText(this);
+        final android.widget.EditText et = new android.widget.EditText(this);
         et.setHint("Class or package name");
         new AlertDialog.Builder(this)
                 .setTitle(R.string.action_search)
                 .setView(et)
                 .setPositiveButton(android.R.string.search_go, (d, w) -> {
-                    String q = et.getText().toString().trim();
+                    String q = et.getText().toString().trim().toLowerCase();
                     if (q.isEmpty()) return;
                     java.util.List<String> results = new ArrayList<>();
-                    searchClasses(root, q.toLowerCase(), results);
+                    searchClasses(root, q, results);
                     emptyView.setText("Found " + results.size() + " matches\n\n" + String.join("\n", results.subList(0, Math.min(results.size(), 50))));
                     emptyView.setVisibility(View.VISIBLE);
                     adapter.setRoot(null);
@@ -243,6 +217,42 @@ public class DexViewerActivity extends AppCompatActivity {
         emptyView.setText("Strings: " + strings.size() + "\n\n" + String.join("\n", strings.subList(0, Math.min(strings.size(), 200))));
         emptyView.setVisibility(View.VISIBLE);
         adapter.setRoot(null);
+    }
+
+    /** Show class details dialog with fields and methods. */
+    private void showClassDetails(DexParser.Node node) {
+        if (parser == null) {
+            Toast.makeText(this, "DEX not loaded", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        DexParser.ClassDef cd = parser.findClassDefByName(node.path);
+        if (cd == null) {
+            Toast.makeText(this, "Class not found in DEX", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        DexParser.ClassData data = parser.parseClassData(cd);
+        String superclass = parser.superclass(cd);
+        String sourceFile = parser.sourceFile(cd);
+
+        StringBuilder sb = new StringBuilder();
+        if (!sourceFile.isEmpty()) sb.append("Source: ").append(sourceFile).append("\n");
+        if (!superclass.isEmpty()) sb.append("Superclass: ").append(superclass).append("\n");
+        sb.append("\n== Fields (").append(data.fields.size()).append(") ==\n");
+        for (DexParser.FieldInfo f : data.fields) {
+            sb.append(f.modifierPrefix()).append(" ").append(f.type).append(" ").append(f.name);
+            sb.append(f.isStatic ? " [static]\n" : "\n");
+        }
+        sb.append("\n== Methods (").append(data.methods.size()).append(") ==\n");
+        for (DexParser.MethodInfo m : data.methods) {
+            sb.append(m.modifierPrefix()).append(" ").append(m.name).append(m.prototype);
+            sb.append(m.isDirect ? " [direct]\n" : "\n");
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(node.name)
+                .setMessage(sb.toString())
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
     }
 
     @Override

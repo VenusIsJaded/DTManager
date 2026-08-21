@@ -35,8 +35,7 @@
                 android:layout_height="wrap_content"
                 android:textColor="@color/text_secondary"
                 android:textSize="12sp"
-                android:text="/storage/emulated/0/"
-                tools:ignore="HardcodedText" />
+                tools:text="/storage/emulated/0/" />
 
             <TextView
                 android:id="@+id/summaryText"
@@ -49,26 +48,44 @@
 
     </com.google.android.material.appbar.AppBarLayout>
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recyclerView"
+    <LinearLayout
+        android:id="@+id/paneContainer"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:clipToPadding="false"
-        android:paddingTop="4dp"
-        android:paddingBottom="80dp"
-        android:scrollbars="vertical"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+        android:orientation="horizontal"
+        android:baselineAligned="false"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
-    <TextView
-        android:id="@+id/emptyView"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:text="@string/empty_dir"
-        android:textColor="@color/text_tertiary"
-        android:textSize="14sp"
-        android:visibility="gone"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+        <FrameLayout
+            android:id="@+id/paneLeftWrap"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="@color/bg_primary">
+
+            <include
+                android:id="@+id/paneLeft"
+                layout="@layout/view_file_pane" />
+        </FrameLayout>
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:background="@color/divider" />
+
+        <FrameLayout
+            android:id="@+id/paneRightWrap"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="@color/bg_primary">
+
+            <include
+                android:id="@+id/paneRight"
+                layout="@layout/view_file_pane" />
+        </FrameLayout>
+
+    </LinearLayout>
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fab"

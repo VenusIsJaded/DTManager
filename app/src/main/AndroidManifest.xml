@@ -47,6 +47,13 @@
             android:parentActivityName=".MainActivity"
             android:label="@string/title_about" />
 
+        <activity
+            android:name=".ui.TextEditorActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.ApkViewerActivity"
+            android:label="@string/title_editor"
+            android:windowSoftInputMode="adjustResize" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

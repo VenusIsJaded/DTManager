@@ -3,9 +3,7 @@ package com.dt.manager.core;
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -13,15 +11,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Minimal DEX (Dalvik Executable) parser. Reads the header, string table,
  * type table, proto/method/field tables and class_def list to build a
- * package/class tree. This is a read-only inspector — it does NOT
- * decompile to smali.
+ * package/class tree. For each class, also parses class_data_item to
+ * expose its fields and methods (read-only — does not decompile to smali).
  *
  * Reference: https://source.android.com/devices/tech/dalvik/dex-format
  */
@@ -40,7 +36,10 @@ public class DexParser implements Closeable {
     private int classDefsSize, classDefsOff;
 
     private String[] strings;
-    private int[] typeIds;
+    private int[] typeIds;       // typeIds[i] -> string index of descriptor
+    private FieldId[] fieldIds;  // field_ids table
+    private MethodId[] methodIds;// method_ids table
+    private ProtoId[] protoIds;  // proto_ids table
     private ClassDef[] classDefs;
 
     public DexParser(File file) throws IOException {
@@ -50,6 +49,9 @@ public class DexParser implements Closeable {
         parseHeader();
         parseStrings();
         parseTypes();
+        parseProtos();
+        parseFields();
+        parseMethods();
         parseClassDefs();
     }
 
@@ -60,6 +62,9 @@ public class DexParser implements Closeable {
         parseHeader();
         parseStrings();
         parseTypes();
+        parseProtos();
+        parseFields();
+        parseMethods();
         parseClassDefs();
     }
 
@@ -74,7 +79,6 @@ public class DexParser implements Closeable {
     }
 
     private void parseHeader() throws IOException {
-        // Magic: dex\n035\0 or dex\n036\0 ... dex\n039\0
         if (raw.length < 0x70) {
             throw new IOException("Not a valid DEX file (too small)");
         }
@@ -111,6 +115,39 @@ public class DexParser implements Closeable {
         }
     }
 
+    private void parseProtos() {
+        protoIds = new ProtoId[protoIdsSize];
+        for (int i = 0; i < protoIdsSize; i++) {
+            int base = protoIdsOff + i * 12;
+            int shortyIdx = readInt(base);
+            int returnIdx = readInt(base + 4);
+            int paramsOff = readInt(base + 8);
+            protoIds[i] = new ProtoId(shortyIdx, returnIdx, paramsOff);
+        }
+    }
+
+    private void parseFields() {
+        fieldIds = new FieldId[fieldIdsSize];
+        for (int i = 0; i < fieldIdsSize; i++) {
+            int base = fieldIdsOff + i * 8;
+            int classIdx = readUShort(base);
+            int typeIdx  = readUShort(base + 2);
+            int nameIdx  = readInt(base + 4);
+            fieldIds[i] = new FieldId(classIdx, typeIdx, nameIdx);
+        }
+    }
+
+    private void parseMethods() {
+        methodIds = new MethodId[methodIdsSize];
+        for (int i = 0; i < methodIdsSize; i++) {
+            int base = methodIdsOff + i * 8;
+            int classIdx = readUShort(base);
+            int protoIdx = readUShort(base + 2);
+            int nameIdx  = readInt(base + 4);
+            methodIds[i] = new MethodId(classIdx, protoIdx, nameIdx);
+        }
+    }
+
     private void parseClassDefs() throws IOException {
         classDefs = new ClassDef[classDefsSize];
         for (int i = 0; i < classDefsSize; i++) {
@@ -138,6 +175,10 @@ public class DexParser implements Closeable {
         return buf.getInt(off);
     }
 
+    private int readUShort(int off) {
+        return buf.getShort(off) & 0xFFFF;
+    }
+
     private String readStringData(int off) {
         // ULEB128 length, then MUTF-8 bytes ending with NUL
         int pos = off;
@@ -149,6 +190,19 @@ public class DexParser implements Closeable {
         return new String(raw, start, pos - start, StandardCharsets.UTF_8);
     }
 
+    /** Read a ULEB128 varint at the given offset, returning [value, nextPos]. */
+    private int[] readUleb128(int pos) {
+        int result = 0;
+        int shift = 0;
+        while (true) {
+            byte b = raw[pos++];
+            result |= (b & 0x7F) << shift;
+            if ((b & 0x80) == 0) break;
+            shift += 7;
+        }
+        return new int[]{result, pos};
+    }
+
     public String stringAt(int idx) {
         if (idx < 0 || idx >= strings.length) return "<invalid>";
         return strings[idx];
@@ -157,6 +211,45 @@ public class DexParser implements Closeable {
     public String typeDescriptor(int idx) {
         if (idx < 0 || idx >= typeIds.length) return "<invalid>";
         return strings[typeIds[idx]];
+    }
+
+    public String fieldName(int fieldIdx) {
+        if (fieldIdx < 0 || fieldIdx >= fieldIds.length) return "<invalid>";
+        return strings[fieldIds[fieldIdx].nameIdx];
+    }
+
+    public String fieldTypeName(int fieldIdx) {
+        if (fieldIdx < 0 || fieldIdx >= fieldIds.length) return "<invalid>";
+        return descriptorToName(typeDescriptor(fieldIds[fieldIdx].typeIdx));
+    }
+
+    public String methodName(int methodIdx) {
+        if (methodIdx < 0 || methodIdx >= methodIds.length) return "<invalid>";
+        return strings[methodIds[methodIdx].nameIdx];
+    }
+
+    public String methodClassName(int methodIdx) {
+        if (methodIdx < 0 || methodIdx >= methodIds.length) return "<invalid>";
+        return descriptorToName(typeDescriptor(methodIds[methodIdx].classIdx));
+    }
+
+    public String methodPrototype(int methodIdx) {
+        if (methodIdx < 0 || methodIdx >= methodIds.length) return "()";
+        MethodId m = methodIds[methodIdx];
+        if (m.protoIdx < 0 || m.protoIdx >= protoIds.length) return "()";
+        ProtoId p = protoIds[m.protoIdx];
+        String returnDesc = typeDescriptor(p.returnTypeIdx);
+        StringBuilder params = new StringBuilder();
+        if (p.paramsOff != 0) {
+            // type_list: uint size, then size * uint type_idx
+            int count = readInt(p.paramsOff);
+            for (int i = 0; i < count; i++) {
+                int t = readInt(p.paramsOff + 4 + i * 4);
+                if (i > 0) params.append(", ");
+                params.append(descriptorToName(typeDescriptor(t)));
+            }
+        }
+        return "(" + params + ") → " + descriptorToName(returnDesc);
     }
 
     /** Convert "Lcom/example/Foo;" → "com.example.Foo" */
@@ -202,12 +295,12 @@ public class DexParser implements Closeable {
             String full = descriptorToName(desc);
             insertClass(root, full);
         }
-        // First pass: separate packages from classes
         root.sortChildren();
         return root;
     }
 
     private void insertClass(Node root, String fullClassName) {
+        if (fullClassName == null || fullClassName.isEmpty()) return;
         String[] parts = fullClassName.split("\\.");
         Node cur = root;
         for (int i = 0; i < parts.length; i++) {
@@ -215,10 +308,7 @@ public class DexParser implements Closeable {
             boolean isPackage = i < parts.length - 1;
             Node child = cur.findChild(part);
             if (child == null) {
-                child = new Node(part,
-                        isPackage ? part : part,
-                        isPackage,
-                        cur.depth + 1);
+                child = new Node(part, part, isPackage, cur.depth + 1);
                 cur.children.add(child);
             }
             cur = child;
@@ -226,7 +316,6 @@ public class DexParser implements Closeable {
     }
 
     public List<String> extractStrings() {
-        // Pull a list of unique printable strings (heuristic)
         List<String> out = new ArrayList<>(strings.length);
         for (String s : strings) {
             if (s == null || s.isEmpty()) continue;
@@ -244,6 +333,82 @@ public class DexParser implements Closeable {
             if (c >= 0xFFFE) return false;
         }
         return true;
+    }
+
+    /** Look up the ClassDef whose type matches the given full class name (e.g. "com.example.Foo"). */
+    public ClassDef findClassDefByName(String fullClassName) {
+        if (fullClassName == null) return null;
+        String desc = "L" + fullClassName.replace('.', '/') + ";";
+        for (ClassDef cd : classDefs) {
+            if (typeDescriptor(cd.classIdx).equals(desc)) return cd;
+        }
+        return null;
+    }
+
+    public String sourceFile(ClassDef cd) {
+        if (cd == null) return "";
+        if (cd.sourceFileIdx == -1 || cd.sourceFileIdx >= strings.length) return "";
+        return strings[cd.sourceFileIdx];
+    }
+
+    public String superclass(ClassDef cd) {
+        if (cd == null) return "";
+        if (cd.superclassIdx == -1 || cd.superclassIdx >= typeIds.length) return "";
+        return descriptorToName(typeDescriptor(cd.superclassIdx));
+    }
+
+    /** Parse a class's class_data_item to get its fields and methods. */
+    public ClassData parseClassData(ClassDef cd) {
+        if (cd == null || cd.classDataOff == 0) {
+            return new ClassData(Collections.emptyList(), Collections.emptyList());
+        }
+        int pos = cd.classDataOff;
+        int[] r;
+        r = readUleb128(pos); int staticFieldsCount = r[0]; pos = r[1];
+        r = readUleb128(pos); int instanceFieldsCount = r[0]; pos = r[1];
+        r = readUleb128(pos); int directMethodsCount = r[0]; pos = r[1];
+        r = readUleb128(pos); int virtualMethodsCount = r[0]; pos = r[1];
+
+        List<FieldInfo> fields = new ArrayList<>(staticFieldsCount + instanceFieldsCount);
+        int fieldIdx = 0;
+        for (int i = 0; i < staticFieldsCount; i++) {
+            r = readUleb128(pos); int diff = r[0]; pos = r[1];
+            r = readUleb128(pos); int access = r[0]; pos = r[1];
+            fieldIdx += diff;
+            fields.add(new FieldInfo(fieldName(fieldIdx), fieldTypeName(fieldIdx), access, true));
+        }
+        for (int i = 0; i < instanceFieldsCount; i++) {
+            r = readUleb128(pos); int diff = r[0]; pos = r[1];
+            r = readUleb128(pos); int access = r[0]; pos = r[1];
+            fieldIdx += diff;
+            fields.add(new FieldInfo(fieldName(fieldIdx), fieldTypeName(fieldIdx), access, false));
+        }
+
+        List<MethodInfo> methods = new ArrayList<>(directMethodsCount + virtualMethodsCount);
+        int methodIdx = 0;
+        for (int i = 0; i < directMethodsCount; i++) {
+            r = readUleb128(pos); int diff = r[0]; pos = r[1];
+            r = readUleb128(pos); int access = r[0]; pos = r[1];
+            r = readUleb128(pos); int codeOff = r[0]; pos = r[1];
+            methodIdx += diff;
+            methods.add(new MethodInfo(methodName(methodIdx), methodPrototype(methodIdx), access, true, codeOff));
+        }
+        for (int i = 0; i < virtualMethodsCount; i++) {
+            r = readUleb128(pos); int diff = r[0]; pos = r[1];
+            r = readUleb128(pos); int access = r[0]; pos = r[1];
+            r = readUleb128(pos); int codeOff = r[0]; pos = r[1];
+            methodIdx += diff;
+            methods.add(new MethodInfo(methodName(methodIdx), methodPrototype(methodIdx), access, false, codeOff));
+        }
+
+        Collections.sort(fields, Comparator
+                .comparingInt((FieldInfo f) -> f.isStatic ? 0 : 1)
+                .thenComparing(f -> f.name.toLowerCase()));
+        Collections.sort(methods, Comparator
+                .comparingInt((MethodInfo m) -> m.isDirect ? 0 : 1)
+                .thenComparing(m -> m.name.toLowerCase()));
+
+        return new ClassData(fields, methods);
     }
 
     @Override
@@ -275,6 +440,80 @@ public class DexParser implements Closeable {
         public boolean isFinal()    { return (accessFlags & 0x0010) != 0; }
     }
 
+    public static class FieldId {
+        public final int classIdx, typeIdx, nameIdx;
+        public FieldId(int classIdx, int typeIdx, int nameIdx) {
+            this.classIdx = classIdx; this.typeIdx = typeIdx; this.nameIdx = nameIdx;
+        }
+    }
+
+    public static class MethodId {
+        public final int classIdx, protoIdx, nameIdx;
+        public MethodId(int classIdx, int protoIdx, int nameIdx) {
+            this.classIdx = classIdx; this.protoIdx = protoIdx; this.nameIdx = nameIdx;
+        }
+    }
+
+    public static class ProtoId {
+        public final int shortyIdx, returnTypeIdx, paramsOff;
+        public ProtoId(int shortyIdx, int returnTypeIdx, int paramsOff) {
+            this.shortyIdx = shortyIdx; this.returnTypeIdx = returnTypeIdx; this.paramsOff = paramsOff;
+        }
+    }
+
+    public static class FieldInfo {
+        public final String name;
+        public final String type;
+        public final int accessFlags;
+        public final boolean isStatic;
+        public FieldInfo(String name, String type, int accessFlags, boolean isStatic) {
+            this.name = name; this.type = type; this.accessFlags = accessFlags; this.isStatic = isStatic;
+        }
+        public String modifierPrefix() {
+            StringBuilder sb = new StringBuilder();
+            if ((accessFlags & 0x0001) != 0) sb.append("public ");
+            if ((accessFlags & 0x0002) != 0) sb.append("private ");
+            if ((accessFlags & 0x0004) != 0) sb.append("protected ");
+            if ((accessFlags & 0x0008) != 0) sb.append("static ");
+            if ((accessFlags & 0x0010) != 0) sb.append("final ");
+            if ((accessFlags & 0x0040) != 0) sb.append("volatile ");
+            if ((accessFlags & 0x0080) != 0) sb.append("transient ");
+            return sb.toString().trim();
+        }
+    }
+
+    public static class MethodInfo {
+        public final String name;
+        public final String prototype;
+        public final int accessFlags;
+        public final boolean isDirect;
+        public final int codeOff;
+        public MethodInfo(String name, String prototype, int accessFlags, boolean isDirect, int codeOff) {
+            this.name = name; this.prototype = prototype; this.accessFlags = accessFlags;
+            this.isDirect = isDirect; this.codeOff = codeOff;
+        }
+        public String modifierPrefix() {
+            StringBuilder sb = new StringBuilder();
+            if ((accessFlags & 0x0001) != 0) sb.append("public ");
+            if ((accessFlags & 0x0002) != 0) sb.append("private ");
+            if ((accessFlags & 0x0004) != 0) sb.append("protected ");
+            if ((accessFlags & 0x0008) != 0) sb.append("static ");
+            if ((accessFlags & 0x0010) != 0) sb.append("final ");
+            if ((accessFlags & 0x0040) != 0) sb.append("synchronized ");
+            if ((accessFlags & 0x0100) != 0) sb.append("native ");
+            if ((accessFlags & 0x0400) != 0) sb.append("abstract ");
+            return sb.toString().trim();
+        }
+    }
+
+    public static class ClassData {
+        public final List<FieldInfo> fields;
+        public final List<MethodInfo> methods;
+        public ClassData(List<FieldInfo> fields, List<MethodInfo> methods) {
+            this.fields = fields; this.methods = methods;
+        }
+    }
+
     public static class Node {
         public String name;
         public String path;
@@ -299,7 +538,6 @@ public class DexParser implements Closeable {
         public boolean hasChildren() { return !children.isEmpty(); }
 
         void sortChildren() {
-            // Packages first, then classes; alphabetical within each group
             Collections.sort(children, Comparator
                     .comparingInt((Node n) -> n.isPackage ? 0 : 1)
                     .thenComparing(n -> n.name.toLowerCase()));

@@ -54,7 +54,7 @@
         android:layout_height="match_parent"
         android:clipToPadding="false"
         android:paddingTop="4dp"
-        android:paddingBottom="80dp"
+        android:paddingBottom="16dp"
         android:scrollbars="vertical"
         app:layout_behavior="@string/appbar_scrolling_view_behavior" />
 
@@ -68,16 +68,5 @@
         android:textSize="14sp"
         android:visibility="gone"
         app:layout_behavior="@string/appbar_scrolling_view_behavior" />
-
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fabInstall"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
-        android:layout_margin="16dp"
-        android:contentDescription="@string/action_install"
-        android:src="@drawable/ic_install"
-        app:backgroundTint="@color/accent_green"
-        app:tint="@color/white" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

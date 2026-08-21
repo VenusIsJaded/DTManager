@@ -1,13 +1,16 @@
 package com.dt.manager.adapter;
 
 import android.content.Context;
-import android.graphics.PorterDuff;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -21,6 +24,8 @@ import com.dt.manager.util.FileUtils;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 public class FileListAdapter extends RecyclerView.Adapter<FileListAdapter.VH> {
 
@@ -33,6 +38,8 @@ public class FileListAdapter extends RecyclerView.Adapter<FileListAdapter.VH> {
     private final List<Object> items = new ArrayList<>();
     private final OnItemClickListener listener;
     private final LayoutInflater inflater;
+    private final Executor iconExecutor = Executors.newFixedThreadPool(2);
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     public FileListAdapter(Context ctx, OnItemClickListener listener) {
         this.ctx = ctx;
@@ -47,9 +54,7 @@ public class FileListAdapter extends RecyclerView.Adapter<FileListAdapter.VH> {
     }
 
     @Override
-    public int getItemCount() {
-        return items.size();
-    }
+    public int getItemCount() { return items.size(); }
 
     @NonNull
     @Override
@@ -67,8 +72,6 @@ public class FileListAdapter extends RecyclerView.Adapter<FileListAdapter.VH> {
 
     private void bindFile(VH h, File f) {
         h.title.setText(f.getName());
-
-        String size = FileUtils.humanReadable(f.length());
         String date = FileUtils.formatDate(f.lastModified());
 
         if (f.isDirectory()) {
@@ -77,10 +80,16 @@ public class FileListAdapter extends RecyclerView.Adapter<FileListAdapter.VH> {
             h.subtitle.setText(ctx.getString(R.string.format_summary, folders, files) + "   " + date);
             h.iconBg.setBackgroundResource(R.drawable.bg_icon_default);
             h.icon.setImageResource(R.drawable.ic_folder);
-            h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.text_secondary), PorterDuff.Mode.SRC_ATOP);
+            h.icon.setTag(null);
+            h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.text_secondary), android.graphics.PorterDuff.Mode.SRC_ATOP);
         } else {
-            h.subtitle.setText(date + "   " + size);
-            applyIconForName(h, f.getName());
+            h.subtitle.setText(date + "   " + FileUtils.humanReadable(f.length()));
+            String name = f.getName().toLowerCase();
+            if (name.endsWith(".apk") || name.endsWith(".xapk") || name.endsWith(".apkm")) {
+                loadApkIcon(h, f);
+            } else {
+                applyIconForName(h, f.getName());
+            }
         }
         h.itemView.setOnClickListener(v -> {
             if (listener != null) listener.onItemClicked(f);
@@ -94,7 +103,8 @@ public class FileListAdapter extends RecyclerView.Adapter<FileListAdapter.VH> {
             h.subtitle.setText("");
             h.iconBg.setBackgroundResource(R.drawable.bg_icon_default);
             h.icon.setImageResource(R.drawable.ic_folder);
-            h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.text_secondary), PorterDuff.Mode.SRC_ATOP);
+            h.icon.setTag(null);
+            h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.text_secondary), android.graphics.PorterDuff.Mode.SRC_ATOP);
         } else {
             h.subtitle.setText(FileUtils.humanReadable(e.getSize()));
             applyIconForName(h, e.getName());
@@ -105,52 +115,87 @@ public class FileListAdapter extends RecyclerView.Adapter<FileListAdapter.VH> {
         h.itemView.setOnLongClickListener(v -> listener != null && listener.onItemLongClicked(e));
     }
 
+    private void loadApkIcon(VH h, File apkFile) {
+        // Reset to default while async load runs
+        h.iconBg.setBackgroundResource(R.drawable.bg_icon_default);
+        h.icon.setImageResource(R.drawable.ic_apk);
+        h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.accent_green), android.graphics.PorterDuff.Mode.SRC_ATOP);
+        final String tag = apkFile.getAbsolutePath() + "#" + h.getBindingAdapterPosition();
+        h.icon.setTag(tag);
+        iconExecutor.execute(() -> {
+            Drawable drawable = null;
+            try {
+                PackageManager pm = ctx.getPackageManager();
+                PackageInfo pkgInfo = pm.getPackageArchiveInfo(apkFile.getAbsolutePath(), 0);
+                if (pkgInfo != null && pkgInfo.applicationInfo != null) {
+                    ApplicationInfo ai = pkgInfo.applicationInfo;
+                    ai.sourceDir = apkFile.getAbsolutePath();
+                    ai.publicSourceDir = apkFile.getAbsolutePath();
+                    drawable = pm.getApplicationIcon(ai);
+                }
+            } catch (Exception ignored) {}
+            final Drawable icon = drawable;
+            mainHandler.post(() -> {
+                if (tag.equals(h.icon.getTag()) && icon != null) {
+                    h.icon.setImageDrawable(icon);
+                    h.icon.setColorFilter(null);
+                }
+            });
+        });
+    }
+
     private void applyIconForName(VH h, String name) {
         String ext = FileUtils.extensionOf(name);
         switch (ext) {
             case "apk":
-                h.iconBg.setBackgroundResource(R.drawable.bg_icon_default);
                 h.icon.setImageResource(R.drawable.ic_apk);
-                h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.accent_green), PorterDuff.Mode.SRC_ATOP);
+                h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.accent_green), android.graphics.PorterDuff.Mode.SRC_ATOP);
                 break;
             case "dex":
-                h.iconBg.setBackgroundResource(R.drawable.bg_icon_default);
                 h.icon.setImageResource(R.drawable.ic_dex);
-                h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.accent_green), PorterDuff.Mode.SRC_ATOP);
+                h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.accent_green), android.graphics.PorterDuff.Mode.SRC_ATOP);
                 break;
             case "xml":
-                h.iconBg.setBackgroundResource(R.drawable.bg_icon_default);
                 h.icon.setImageResource(R.drawable.ic_xml);
-                h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.accent_blue), PorterDuff.Mode.SRC_ATOP);
+                h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.accent_blue), android.graphics.PorterDuff.Mode.SRC_ATOP);
                 break;
             case "arsc":
-                h.iconBg.setBackgroundResource(R.drawable.bg_icon_default);
                 h.icon.setImageResource(R.drawable.ic_file);
-                h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.accent_orange), PorterDuff.Mode.SRC_ATOP);
+                h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.accent_orange), android.graphics.PorterDuff.Mode.SRC_ATOP);
                 break;
             case "so":
-                h.iconBg.setBackgroundResource(R.drawable.bg_icon_default);
                 h.icon.setImageResource(R.drawable.ic_file);
-                h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.accent_purple), PorterDuff.Mode.SRC_ATOP);
+                h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.accent_purple), android.graphics.PorterDuff.Mode.SRC_ATOP);
                 break;
             case "json":
             case "txt":
             case "properties":
-                h.iconBg.setBackgroundResource(R.drawable.bg_icon_default);
+            case "ts":
+            case "smali":
+            case "md":
+            case "yml":
+            case "yaml":
+            case "ini":
+            case "cfg":
+            case "csv":
+            case "log":
+            case "html":
+            case "css":
+            case "java":
+            case "kt":
                 h.icon.setImageResource(R.drawable.ic_file);
-                h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.accent_blue), PorterDuff.Mode.SRC_ATOP);
+                h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.accent_blue), android.graphics.PorterDuff.Mode.SRC_ATOP);
                 break;
             case "bin":
-                h.iconBg.setBackgroundResource(R.drawable.bg_icon_default);
                 h.icon.setImageResource(R.drawable.ic_file);
-                h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.text_secondary), PorterDuff.Mode.SRC_ATOP);
+                h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.text_secondary), android.graphics.PorterDuff.Mode.SRC_ATOP);
                 break;
             default:
-                h.iconBg.setBackgroundResource(R.drawable.bg_icon_default);
                 h.icon.setImageResource(R.drawable.ic_file);
-                h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.text_secondary), PorterDuff.Mode.SRC_ATOP);
+                h.icon.setColorFilter(ContextCompat.getColor(ctx, R.color.text_secondary), android.graphics.PorterDuff.Mode.SRC_ATOP);
                 break;
         }
+        h.iconBg.setBackgroundResource(R.drawable.bg_icon_default);
     }
 
     static class VH extends RecyclerView.ViewHolder {
